@@ -1,0 +1,240 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>予定一覧</title>
+
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 16px;
+}
+.range {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 8px;
+}
+.controls {
+  margin-bottom: 12px;
+}
+.controls label {
+  margin-right: 12px;
+}
+.controls input[type="text"] {
+  width: 200px;
+}
+button {
+  padding: 4px 10px;
+  margin-right: 4px;
+}
+pre {
+  white-space: pre-wrap;
+  font-size: 14px;
+  background: #f6f6f6;
+  padding: 12px;
+}
+</style>
+</head>
+
+<body>
+<h2>予定一覧</h2>
+
+<div class="range" id="rangeInfo">
+  ICSの有効期間を取得中…
+</div>
+
+<div class="controls">
+  <label>
+    開始日：
+    <input type="date" id="startDate" disabled>
+  </label>
+  <label>
+    終了日：
+    <input type="date" id="endDate" disabled>
+  </label>
+
+  <button id="todayBtn" disabled>今日</button>
+  <button id="weekBtn" disabled>今週</button>
+  <button id="monthBtn" disabled>今月</button>
+
+  <label>
+    検索：
+    <input type="text" id="keyword" placeholder="件名・場所">
+  </label>
+  <button id="loadBtn" disabled>データ読込</button>
+</div>
+
+<pre id="out">初期化中…</pre>
+
+<script>
+const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"
+
+const startInput = document.getElementById("startDate");
+const endInput   = document.getElementById("endDate");
+const keywordInput = document.getElementById("keyword");
+const loadBtn    = document.getElementById("loadBtn");
+const todayBtn   = document.getElementById("todayBtn");
+const weekBtn    = document.getElementById("weekBtn");
+const monthBtn   = document.getElementById("monthBtn");
+const output     = document.getElementById("out");
+const rangeInfo  = document.getElementById("rangeInfo");
+
+let cachedICS = null;
+let minDate = null;
+let maxDate = null;
+
+// 初期化
+init();
+
+async function init() {
+  try {
+    const res = await fetch(WORKER_URL);
+    const text = await res.text();
+
+    const normalized = text.replace(/\r?\n[ \t]/g, "");
+    cachedICS = normalized;
+
+    const events = normalized.split("BEGIN:VEVENT").slice(1);
+
+    events.forEach(block => {
+      const m = block.match(/DTSTART[^:]*:(\d{8})/);
+      if (!m) return;
+
+      const date = parseDate(m[1]);
+      if (!minDate || date < minDate) minDate = date;
+      if (!maxDate || date > maxDate) maxDate = date;
+    });
+
+    if (!minDate || !maxDate) {
+      rangeInfo.textContent = "ICS内に予定が見つかりません";
+      return;
+    }
+
+    const minStr = formatDate(minDate);
+    const maxStr = formatDate(maxDate);
+
+    rangeInfo.textContent = `ICSの有効期間：${minStr} ～ ${maxStr}`;
+
+    startInput.min = minStr;
+    startInput.max = maxStr;
+    endInput.min   = minStr;
+    endInput.max   = maxStr;
+
+    startInput.value = minStr;
+    endInput.value   = maxStr;
+
+    startInput.disabled = false;
+    endInput.disabled   = false;
+    loadBtn.disabled    = false;
+    todayBtn.disabled   = false;
+    weekBtn.disabled    = false;
+    monthBtn.disabled   = false;
+
+    output.textContent = "条件を指定して「データ読込」を押してください";
+
+  } catch (err) {
+    rangeInfo.textContent = "ICSの初期化に失敗しました";
+    console.error(err);
+  }
+}
+
+function parseDate(yyyymmdd) {
+  return new Date(
+    yyyymmdd.slice(0,4),
+    Number(yyyymmdd.slice(4,6)) - 1,
+    yyyymmdd.slice(6,8)
+  );
+}
+
+function formatDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function clamp(date) {
+  if (date < minDate) return minDate;
+  if (date > maxDate) return maxDate;
+  return date;
+}
+
+// 今日
+todayBtn.addEventListener("click", () => {
+  const d = clamp(new Date());
+  const s = formatDate(d);
+  startInput.value = s;
+  endInput.value   = s;
+});
+
+// 今週（月曜始まり）
+weekBtn.addEventListener("click", () => {
+  const now = new Date();
+  const day = now.getDay(); // 0=日
+  const mondayOffset = (day === 0 ? -6 : 1) - day;
+
+  const start = new Date(now);
+  start.setDate(now.getDate() + mondayOffset);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  startInput.value = formatDate(clamp(start));
+  endInput.value   = formatDate(clamp(end));
+});
+
+// 今月
+monthBtn.addEventListener("click", () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  startInput.value = formatDate(clamp(start));
+  endInput.value   = formatDate(clamp(end));
+});
+
+// 一覧生成
+loadBtn.addEventListener("click", () => {
+  const startDate = new Date(startInput.value);
+  const endDate   = new Date(endInput.value);
+
+  if (startDate > endDate) {
+    output.textContent = "開始日は終了日以前にしてください";
+    return;
+  }
+
+  const keyword = keywordInput.value.trim().toLowerCase();
+  const events = cachedICS.split("BEGIN:VEVENT").slice(1);
+  const lines = [];
+
+  events.forEach(block => {
+    const get = re => (block.match(re) || [])[1]?.trim() || "";
+
+    const summary  = get(/SUMMARY:(.+)/);
+    const location = get(/LOCATION:(.+)/);
+    const startRaw = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
+    const endRaw   = get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
+
+    if (!startRaw || !endRaw) return;
+
+    const eventDate = parseDate(startRaw.slice(0,8));
+    if (eventDate < startDate || eventDate > endDate) return;
+
+    if (keyword && !`${summary} ${location}`.toLowerCase().includes(keyword)) return;
+
+    const time = startRaw.includes("T")
+      ? `${startRaw.slice(9,11)}:${startRaw.slice(11,13)}-${endRaw.slice(9,11)}:${endRaw.slice(11,13)}`
+      : "00:00-24:00";
+
+    let line = `${formatDate(eventDate)} ${time}`;
+    if (summary) line += ` ${summary}`;
+    if (location) line += ` @${location}`;
+    lines.push(line);
+  });
+
+  output.textContent = lines.length ? lines.join("\n") : "条件に一致する予定はありません";
+});
+</script>
+</body>
+</html>
