@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>予定一覧（カレンダー風）</title>
-
+<title>予定一覧（ガントチャート風）</title>
 <style>
 body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -29,50 +28,52 @@ button {
   color: #555;
   margin-bottom: 8px;
 }
-#calendar {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.day-block {
+#ganttContainer {
+  overflow-x: auto;
   border: 1px solid #ccc;
   padding: 6px;
-  border-radius: 4px;
-  background: #fafafa;
 }
-.day-block .date {
-  font-weight: bold;
+.gantt-chart {
+  display: flex;
+  position: relative;
+  min-height: 40px;
+}
+.gantt-date {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 12px;
+  width: 40px;
+  text-align: center;
+  margin-right: 2px;
+}
+.event-bar {
+  position: absolute;
+  height: 24px;
+  border-radius: 4px;
+  color: #000;
+  font-size: 12px;
+  padding-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-bar.normal { background: #3399ff; color: #fff; }
+.event-bar.memo { background: #ffcc00; color: #000; }
+.memo-section {
+  margin-top: 16px;
+}
+.memo-section h3 {
   margin-bottom: 4px;
 }
-.event {
-  margin-left: 10px;
-  padding: 2px 4px;
-  border-radius: 3px;
-  margin-bottom: 2px;
-}
-.event.memo {
-  background: #fffae6;
-  border-left: 4px solid #ffcc00;
-}
-.event.normal {
-  background: #e6f0ff;
-  border-left: 4px solid #3399ff;
-}
-@media (max-width: 480px) {
-  .controls label, .controls input, .controls button {
-    display: block;
-    margin-bottom: 8px;
-  }
-  .controls input[type="text"], .controls input[type="date"] {
-    width: 100%;
-  }
+.memo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>
 </head>
-
 <body>
-<h2>予定一覧（カレンダー風）</h2>
-
+<h2>予定一覧（ガントチャート風）</h2>
 <div class="range" id="rangeInfo">ICSの有効期間を取得中…</div>
 
 <div class="controls">
@@ -95,7 +96,13 @@ button {
   <button id="loadBtn" disabled>データ読込</button>
 </div>
 
-<div id="calendar">初期化中…</div>
+<div id="ganttContainer">
+  <div id="ganttChart" class="gantt-chart">初期化中…</div>
+</div>
+<div class="memo-section" id="memoSection" style="display:none">
+  <h3>メモ一覧</h3>
+  <div class="memo-list" id="memoList"></div>
+</div>
 
 <script>
 const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
@@ -109,7 +116,10 @@ const weekBtn    = document.getElementById("weekBtn");
 const monthBtn   = document.getElementById("monthBtn");
 const allBtn     = document.getElementById("allBtn");
 const memoBtn    = document.getElementById("memoBtn");
-const calendarEl = document.getElementById("calendar");
+const ganttChart = document.getElementById("ganttChart");
+const ganttContainer = document.getElementById("ganttContainer");
+const memoSection = document.getElementById("memoSection");
+const memoList = document.getElementById("memoList");
 const rangeInfo  = document.getElementById("rangeInfo");
 
 let cachedICS = null;
@@ -123,39 +133,29 @@ async function init() {
   try {
     const res = await fetch(WORKER_URL);
     const text = await res.text();
-
-    const normalized = text.replace(/\r?\n[ \t]/g, "");
-    cachedICS = normalized;
-
-    const events = normalized.split("BEGIN:VEVENT").slice(1);
-
+    cachedICS = text.replace(/\r?\n[ \t]/g, "");
+    const events = cachedICS.split("BEGIN:VEVENT").slice(1);
     minDate = null;
     maxDate = null;
-
     events.forEach(block => {
       const m = block.match(/DTSTART[^:]*:(\d{8})/);
       if (!m) return;
       const date = m[1];
-      if (date === "99991231") return; // メモ除外
+      if (date === "99991231") return;
       if (!minDate || date < minDate) minDate = date;
       if (!maxDate || date > maxDate) maxDate = date;
     });
-
     if (!minDate || !maxDate) {
       rangeInfo.textContent = "ICS内に予定が見つかりません";
       return;
     }
-
     rangeInfo.textContent = `ICSの有効期間：${formatYMD(minDate)} ～ ${formatYMD(maxDate)}`;
-
     startInput.min = formatYMD(minDate);
     startInput.max = formatYMD(maxDate);
     endInput.min   = formatYMD(minDate);
     endInput.max   = formatYMD(maxDate);
-
     startInput.value = formatYMD(minDate);
     endInput.value   = formatYMD(maxDate);
-
     startInput.disabled = false;
     endInput.disabled   = false;
     loadBtn.disabled    = false;
@@ -164,129 +164,95 @@ async function init() {
     monthBtn.disabled   = false;
     allBtn.disabled     = false;
     memoBtn.disabled    = false;
-
-    calendarEl.textContent = "条件を指定して「データ読込」または「メモ一覧」を押してください";
-
-  } catch (err) {
+    ganttChart.textContent = "条件を指定して「データ読込」または「メモ一覧」を押してください";
+  } catch(e) {
     rangeInfo.textContent = "ICSの初期化に失敗しました";
-    console.error(err);
+    console.error(e);
   }
 }
 
-function formatYMD(yyyymmdd) {
-  return `${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`;
-}
+function formatYMD(yyyymmdd){return `${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`;}
+function toYMD(dateStr){return dateStr.replace(/-/g,'');}
+function dateToYMD(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
+function clampYMD(ymd){if(ymd<minDate) return minDate; if(ymd>maxDate) return maxDate; return ymd;}
 
-function toYMD(dateStr) {
-  return dateStr.replace(/-/g, "");
-}
+todayBtn.addEventListener("click",()=>{const today=dateToYMD(new Date());startInput.value=formatYMD(clampYMD(today));endInput.value=formatYMD(clampYMD(today));});
+weekBtn.addEventListener("click",()=>{const now=new Date();const day=now.getDay();const offset=(day===0?-6:1)-day;const start=new Date(now);start.setDate(now.getDate()+offset);const end=new Date(start);end.setDate(start.getDate()+6);startInput.value=formatYMD(clampYMD(dateToYMD(start)));endInput.value=formatYMD(clampYMD(dateToYMD(end)));});
+monthBtn.addEventListener("click",()=>{const now=new Date();const start=new Date(now.getFullYear(),now.getMonth(),1);const end=new Date(now.getFullYear(),now.getMonth()+1,0);startInput.value=formatYMD(clampYMD(dateToYMD(start)));endInput.value=formatYMD(clampYMD(dateToYMD(end)));});
+allBtn.addEventListener("click",()=>{startInput.value=formatYMD(minDate);endInput.value=formatYMD(maxDate);});
+memoBtn.addEventListener("click",()=>{renderEvents(true);});
+loadBtn.addEventListener("click",()=>{renderEvents(false);});
 
-function dateToYMD(d) {
-  return d.getFullYear().toString().padStart(4,'0') +
-         (d.getMonth()+1).toString().padStart(2,'0') +
-         d.getDate().toString().padStart(2,'0');
-}
-
-function clampYMD(ymd) {
-  if (ymd < minDate) return minDate;
-  if (ymd > maxDate) return maxDate;
-  return ymd;
-}
-
-// ボタン処理
-todayBtn.addEventListener("click", () => {
-  const today = dateToYMD(new Date());
-  startInput.value = formatYMD(clampYMD(today));
-  endInput.value   = formatYMD(clampYMD(today));
-});
-weekBtn.addEventListener("click", () => {
-  const now = new Date();
-  const day = now.getDay();
-  const mondayOffset = (day === 0 ? -6 : 1) - day;
-  const start = new Date(now); start.setDate(now.getDate() + mondayOffset);
-  const end = new Date(start); end.setDate(start.getDate() + 6);
-  startInput.value = formatYMD(clampYMD(dateToYMD(start)));
-  endInput.value   = formatYMD(clampYMD(dateToYMD(end)));
-});
-monthBtn.addEventListener("click", () => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  startInput.value = formatYMD(clampYMD(dateToYMD(start)));
-  endInput.value   = formatYMD(clampYMD(dateToYMD(end)));
-});
-allBtn.addEventListener("click", () => {
-  startInput.value = formatYMD(minDate);
-  endInput.value   = formatYMD(maxDate);
-});
-
-// メモ一覧
-memoBtn.addEventListener("click", () => {
-  renderEvents(true);
-});
-
-// データ読込
-loadBtn.addEventListener("click", () => {
-  renderEvents(false);
-});
-
-function renderEvents(showMemoOnly) {
-  const startYMD = showMemoOnly ? null : toYMD(startInput.value);
-  const endYMD   = showMemoOnly ? null : toYMD(endInput.value);
-  const keyword  = keywordInput.value.trim().toLowerCase();
-
+function renderEvents(showMemoOnly){
+  const startYMD = showMemoOnly?null:toYMD(startInput.value);
+  const endYMD = showMemoOnly?null:toYMD(endInput.value);
+  const keyword = keywordInput.value.trim().toLowerCase();
   const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-  const grouped = {};
+  const items = [];
+  const memos = [];
 
-  events.forEach(block => {
-    const get = re => (block.match(re) || [])[1]?.trim() || "";
-    const summary  = get(/SUMMARY:(.+)/);
-    const location = get(/LOCATION:(.+)/);
-    const startRaw = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
+  events.forEach(block=>{
+    const get = re=>(block.match(re)||[])[1]?.trim()||"";
+    const summary=get(/SUMMARY:(.+)/);
+    const location=get(/LOCATION:(.+)/);
+    const startRaw=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
+    const endRaw=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
+    if(!startRaw||!endRaw) return;
+    const ymd=startRaw.slice(0,8);
+    const isMemo = ymd==="99991231";
 
-    if (!startRaw) return;
-    const ymd = startRaw.slice(0,8);
-    const isMemo = ymd === "99991231";
+    if(showMemoOnly&&!isMemo) return;
+    if(!showMemoOnly&&isMemo) return;
+    if(!showMemoOnly&&(ymd<startYMD||ymd>endYMD)) return;
+    if(keyword&&!`${summary} ${location}`.toLowerCase().includes(keyword)) return;
 
-    if (showMemoOnly && !isMemo) return;
-    if (!showMemoOnly && isMemo) return;
-    if (!showMemoOnly && (ymd < startYMD || ymd > endYMD)) return;
-    if (keyword && !`${summary} ${location}`.toLowerCase().includes(keyword)) return;
-
-    if (!grouped[ymd]) grouped[ymd] = [];
-    grouped[ymd].push({summary, location, memo: isMemo, startRaw});
+    if(isMemo) memos.push({summary,location});
+    else items.push({startRaw,endRaw,summary,location});
   });
 
-  if (Object.keys(grouped).length === 0) {
-    calendarEl.textContent = showMemoOnly ? "メモはありません" : "条件に一致する予定はありません";
-    return;
-  }
-
-  // 日付順に描画
-  const sortedDates = Object.keys(grouped).sort();
-  calendarEl.innerHTML = "";
-  sortedDates.forEach(d => {
-    const block = document.createElement("div");
-    block.className = "day-block";
-    block.innerHTML = `<div class="date">${d}</div>`;
-
-    grouped[d].forEach(ev => {
-      const evEl = document.createElement("div");
-      evEl.className = `event ${ev.memo ? "memo" : "normal"}`;
-      let text = "";
-      if (!ev.memo && ev.startRaw.includes("T")) {
-        text += `${ev.startRaw.slice(9,11)}:${ev.startRaw.slice(11,13)}-`;
-        const endRaw = block.match(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/)?.[1] || "";
-        if (endRaw) text += `${endRaw.slice(9,11)}:${endRaw.slice(11,13)} `;
-      }
-      text += ev.summary || "";
-      if (ev.location) text += ` @${ev.location}`;
-      evEl.textContent = text;
-      block.appendChild(evEl);
+  // ガントチャート描画
+  if(!showMemoOnly){
+    memoSection.style.display="none";
+    ganttChart.innerHTML="";
+    if(items.length===0){ganttChart.textContent="条件に一致する予定はありません";return;}
+    // 横軸日付範囲
+    const dates = [];
+    const startDt = new Date(startInput.value);
+    const endDt = new Date(endInput.value);
+    for(let d=new Date(startDt);d<=endDt;d.setDate(d.getDate()+1)){
+      dates.push(new Date(d));
+    }
+    const dayWidth=60;
+    const chartHeight=items.length*30;
+    ganttChart.style.height=chartHeight+"px";
+    ganttChart.style.position="relative";
+    items.forEach((ev,i)=>{
+      const bar=document.createElement("div");
+      bar.className="event-bar normal";
+      bar.style.top=(i*30)+"px";
+      bar.style.height="24px";
+      const evStart=ev.startRaw.includes("T")?new Date(`${ev.startRaw.slice(0,4)}-${ev.startRaw.slice(4,6)}-${ev.startRaw.slice(6,8)}T${ev.startRaw.slice(9,11)}:${ev.startRaw.slice(11,13)}:00`):new Date(`${ev.startRaw.slice(0,4)}-${ev.startRaw.slice(4,6)}-${ev.startRaw.slice(6,8)}`);
+      const evEnd=ev.endRaw.includes("T")?new Date(`${ev.endRaw.slice(0,4)}-${ev.endRaw.slice(4,6)}-${ev.endRaw.slice(6,8)}T${ev.endRaw.slice(9,11)}:${ev.endRaw.slice(11,13)}:00`):new Date(`${ev.endRaw.slice(0,4)}-${ev.endRaw.slice(4,6)}-${ev.endRaw.slice(6,8)}`);
+      const offset = (evStart - startDt)/(1000*60*60*24)*dayWidth;
+      const width = Math.max((evEnd-evStart)/(1000*60*60*24)*dayWidth, dayWidth*0.5);
+      bar.style.left=offset+"px";
+      bar.style.width=width+"px";
+      bar.textContent=ev.summary;
+      ganttChart.appendChild(bar);
     });
-
-    calendarEl.appendChild(block);
-  });
+  } else {
+    // メモ描画
+    memoSection.style.display="block";
+    memoList.innerHTML="";
+    if(memos.length===0){memoList.textContent="メモはありません";return;}
+    memos.forEach(m=>{
+      const el=document.createElement("div");
+      el.textContent=m.summary+(m.location?` @${m.location}`:"");
+      el.className="event-bar memo";
+      el.style.width="200px";
+      memoList.appendChild(el);
+    });
+  }
 }
 </script>
 </body>
