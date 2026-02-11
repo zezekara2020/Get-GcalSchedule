@@ -70,13 +70,13 @@ pre {
     <input type="text" id="keyword" placeholder="件名">
   </label>
   <button id="loadBtn" disabled>表示</button>
+  <button id="copyBtn" disabled>コピー</button>
 </div>
 
 <pre id="out">初期化中…</pre>
 
 <script>
 const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
-
 const startInput = document.getElementById("startDate");
 const endInput   = document.getElementById("endDate");
 const keywordInput = document.getElementById("keyword");
@@ -88,6 +88,7 @@ const monthBtn = document.getElementById("monthBtn");
 const allBtn   = document.getElementById("allBtn");
 const memoBtn  = document.getElementById("memoBtn");
 const loadBtn  = document.getElementById("loadBtn");
+const copyBtn  = document.getElementById("copyBtn");
 const rangeInfo = document.getElementById("rangeInfo");
 
 let cachedICS = "";
@@ -152,6 +153,8 @@ loadBtn.onclick = () => render(false);
 memoBtn.onclick = () => render(true);
 
 function render(showMemo) {
+  copyBtn.disabled = true;
+
   const s = startInput.value.replace(/-/g,"");
   const e = endInput.value.replace(/-/g,"");
   const key = keywordInput.value.toLowerCase();
@@ -192,7 +195,20 @@ function render(showMemo) {
   output.textContent = lines.length
     ? lines.map(l=>l.text).join("\n")
     : (showMemo ? "メモはありません" : "条件に一致する予定はありません");
+
+  if (lines.length) copyBtn.disabled = false;
 }
+
+/* ---------- コピー ---------- */
+copyBtn.onclick = async () => {
+  const text = output.textContent
+    .split("\n")
+    .map(line => line.slice(11)) // yyyy-mm-dd + space を削除
+    .join("\n");
+
+  await navigator.clipboard.writeText(text);
+  alert("コピーしました");
+};
 
 /* ---------- util ---------- */
 function fmt(ymd){return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
