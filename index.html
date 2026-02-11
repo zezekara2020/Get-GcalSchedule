@@ -73,7 +73,7 @@ pre {
 <pre id="out">初期化中…</pre>
 
 <script>
-const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/";
+const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
 const startInput = document.getElementById("startDate");
 const endInput   = document.getElementById("endDate");
 const keywordInput = document.getElementById("keyword");
@@ -104,7 +104,7 @@ async function init() {
     events.forEach(block => {
       const m = block.match(/DTSTART[^:]*:(\d{8})/);
       if (!m) return;
-      const date = parseDate(m[1]);
+      const date = m[1]; // YYYYMMDD
       if (!minDate || date < minDate) minDate = date;
       if (!maxDate || date > maxDate) maxDate = date;
     });
@@ -114,18 +114,15 @@ async function init() {
       return;
     }
 
-    const minStr = formatDate(minDate);
-    const maxStr = formatDate(maxDate);
+    rangeInfo.textContent = `ICSの有効期間：${formatYMD(minDate)} ～ ${formatYMD(maxDate)}`;
 
-    rangeInfo.textContent = `ICSの有効期間：${minStr} ～ ${maxStr}`;
+    startInput.min = formatYMD(minDate);
+    startInput.max = formatYMD(maxDate);
+    endInput.min   = formatYMD(minDate);
+    endInput.max   = formatYMD(maxDate);
 
-    startInput.min = minStr;
-    startInput.max = maxStr;
-    endInput.min   = minStr;
-    endInput.max   = maxStr;
-
-    startInput.value = minStr;
-    endInput.value   = maxStr;
+    startInput.value = formatYMD(minDate);
+    endInput.value   = formatYMD(maxDate);
 
     startInput.disabled = false;
     endInput.disabled   = false;
@@ -142,108 +139,25 @@ async function init() {
   }
 }
 
-// parseDate を午前0時固定に
-function parseDate(yyyymmdd) {
-  const y = Number(yyyymmdd.slice(0,4));
-  const m = Number(yyyymmdd.slice(4,6)) - 1;
-  const d = Number(yyyymmdd.slice(6,8));
-  return new Date(y, m, d, 0, 0, 0, 0);
+// YYYYMMDD → yyyy-mm-dd
+function formatYMD(yyyymmdd) {
+  return `${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`;
 }
 
-function formatDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function clamp(date) {
-  if (date < minDate) return minDate;
-  if (date > maxDate) return maxDate;
-  return date;
+// yyyy-mm-dd → YYYYMMDD
+function toYMD(dateStr) {
+  return dateStr.replace(/-/g, "");
 }
 
 // 今日
 todayBtn.addEventListener("click", () => {
-  const d = clamp(new Date());
-  d.setHours(0,0,0,0); // 追加: 午前0時に揃える
-  const s = formatDate(d);
-  startInput.value = s;
-  endInput.value   = s;
+  const today = new Date();
+  const ymd = today.getFullYear().toString().padStart(4,'0') +
+              (today.getMonth()+1).toString().padStart(2,'0') +
+              today.getDate().toString().padStart(2,'0');
+  const clamped = clampYMD(ymd);
+  startInput.value = formatYMD(clamped);
+  endInput.value   = formatYMD(clamped);
 });
 
-// 今週（月曜始まり）
-weekBtn.addEventListener("click", () => {
-  const now = new Date();
-  now.setHours(0,0,0,0);
-  const day = now.getDay(); // 0=日
-  const mondayOffset = (day === 0 ? -6 : 1) - day;
-
-  const start = new Date(now);
-  start.setDate(now.getDate() + mondayOffset);
-
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-
-  startInput.value = formatDate(clamp(start));
-  endInput.value   = formatDate(clamp(end));
-});
-
-// 今月
-monthBtn.addEventListener("click", () => {
-  const now = new Date();
-  now.setHours(0,0,0,0);
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  startInput.value = formatDate(clamp(start));
-  endInput.value   = formatDate(clamp(end));
-});
-
-// 一覧生成
-loadBtn.addEventListener("click", () => {
-  const startDate = new Date(startInput.value);
-  const endDate   = new Date(endInput.value);
-
-  startDate.setHours(0,0,0,0);
-  endDate.setHours(23,59,59,999);
-
-  if (startDate > endDate) {
-    output.textContent = "開始日は終了日以前にしてください";
-    return;
-  }
-
-  const keyword = keywordInput.value.trim().toLowerCase();
-  const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-  const lines = [];
-
-  events.forEach(block => {
-    const get = re => (block.match(re) || [])[1]?.trim() || "";
-
-    const summary  = get(/SUMMARY:(.+)/);
-    const location = get(/LOCATION:(.+)/);
-    const startRaw = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
-    const endRaw   = get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
-
-    if (!startRaw || !endRaw) return;
-
-    const eventDate = parseDate(startRaw.slice(0,8));
-    if (eventDate < startDate || eventDate > endDate) return;
-
-    if (keyword && !`${summary} ${location}`.toLowerCase().includes(keyword)) return;
-
-    const time = startRaw.includes("T")
-      ? `${startRaw.slice(9,11)}:${startRaw.slice(11,13)}-${endRaw.slice(9,11)}:${endRaw.slice(11,13)}`
-      : "00:00-24:00";
-
-    let line = `${formatDate(eventDate)} ${time}`;
-    if (summary) line += ` ${summary}`;
-    if (location) line += ` @${location}`;
-    lines.push(line);
-  });
-
-  output.textContent = lines.length ? lines.join("\n") : "条件に一致する予定はありません";
-});
-</script>
-</body>
-</html>
+// 今
