@@ -10,40 +10,12 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   padding: 16px;
 }
-.range {
-  font-size: 13px;
-  color: #555;
-  margin-bottom: 8px;
-}
-.controls {
-  margin-bottom: 12px;
-}
-.controls label {
-  margin-right: 12px;
-}
-.controls input[type="date"], .controls input[type="text"] {
-  width: 180px;
-}
-button {
-  padding: 4px 10px;
-  margin-right: 4px;
-  margin-top: 4px;
-}
-pre {
-  white-space: pre-wrap;
-  background: #f6f6f6;
-  padding: 12px;
-  font-size: 14px;
-}
-@media (max-width: 480px) {
-  .controls label, .controls input, .controls button {
-    display: block;
-    margin-bottom: 8px;
-  }
-  .controls input {
-    width: 100%;
-  }
-}
+.range { font-size: 13px; color: #555; margin-bottom: 8px; }
+.controls { margin-bottom: 12px; }
+.controls label { margin-right: 12px; }
+.controls input[type="date"], .controls input[type="text"] { width: 180px; }
+button { padding: 4px 10px; margin-right: 4px; margin-top: 4px; }
+pre { white-space: pre-wrap; background: #f6f6f6; padding: 12px; font-size: 14px; }
 </style>
 </head>
 
@@ -65,6 +37,7 @@ pre {
   <button id="monthBtn" disabled>今月</button>
   <button id="allBtn" disabled>全期間</button>
   <button id="memoBtn" disabled>メモ一覧</button>
+  <button id="headingBtn" disabled>見出し</button>
 
   <label>検索：
     <input type="text" id="keyword" placeholder="件名">
@@ -77,6 +50,7 @@ pre {
 
 <script>
 const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
+
 const startInput = document.getElementById("startDate");
 const endInput   = document.getElementById("endDate");
 const keywordInput = document.getElementById("keyword");
@@ -89,6 +63,7 @@ const allBtn   = document.getElementById("allBtn");
 const memoBtn  = document.getElementById("memoBtn");
 const loadBtn  = document.getElementById("loadBtn");
 const copyBtn  = document.getElementById("copyBtn");
+const headingBtn = document.getElementById("headingBtn");
 const rangeInfo = document.getElementById("rangeInfo");
 
 let cachedICS = "";
@@ -103,130 +78,119 @@ async function init() {
   cachedICS = (await res.text()).replace(/\r?\n[ \t]/g, "");
 
   const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-
   events.forEach(b => {
     const m = b.match(/DTSTART[^:]*:(\d{8})/);
     if (!m) return;
-    if (m[1] === "99991231") return;
     if (!minDate || m[1] < minDate) minDate = m[1];
     if (!maxDate || m[1] > maxDate) maxDate = m[1];
   });
 
   rangeInfo.textContent = `期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
 
-  startInput.min = endInput.min = fmt(minDate);
-  startInput.max = endInput.max = fmt(maxDate);
   startInput.value = fmt(minDate);
   endInput.value   = fmt(maxDate);
 
-  [startInput, endInput, todayBtn, weekBtn, monthBtn, allBtn, memoBtn, loadBtn]
-    .forEach(e => e.disabled = false);
+  [startInput, endInput, todayBtn, weekBtn, monthBtn, allBtn,
+   memoBtn, loadBtn, headingBtn].forEach(e => e.disabled = false);
 
-  output.textContent = "条件を指定して「表示」を押してください";
+  output.textContent = "条件を指定してください";
 }
-startInput.addEventListener("change", () => {
-  // 終了日の最小値を開始日に合わせる
-  endInput.min = startInput.value;
 
-  // 終了日が未入力、または開始日より前なら同じ日にする
-  if (!endInput.value || endInput.value < startInput.value) {
-    endInput.value = startInput.value;
-  }
-});
-endInput.addEventListener("change", () => {
-  if (endInput.value < startInput.value) {
-    endInput.value = startInput.value;
-  }
-});
-/* ---------- 日付操作 ---------- */
-todayBtn.onclick = () => {
-  const t = ymd(new Date());
-  startInput.value = endInput.value = fmt(clamp(t));
-};
-weekBtn.onclick = () => {
-  const d = new Date();
-  const w = d.getDay();
-  d.setDate(d.getDate() - (w === 0 ? 6 : w - 1));
-  startInput.value = fmt(clamp(ymd(d)));
-  d.setDate(d.getDate() + 6);
-  endInput.value = fmt(clamp(ymd(d)));
-};
-monthBtn.onclick = () => {
-  const d = new Date();
-  startInput.value = fmt(clamp(ymd(new Date(d.getFullYear(), d.getMonth(), 1))));
-  endInput.value   = fmt(clamp(ymd(new Date(d.getFullYear(), d.getMonth()+1, 0))));
-};
-allBtn.onclick = () => {
-  startInput.value = fmt(minDate);
-  endInput.value   = fmt(maxDate);
+/* ---------- 見出し ---------- */
+headingBtn.onclick = () => {
+  const ymd8 = startInput.value.replace(/-/g,"");
+  const d = new Date(startInput.value);
+  const week = ["日","月","火","水","木","金","土"][d.getDay()];
+
+  const holiday = getHoliday(ymd8);
+  const sekki = getSekki(d);
+  const sekku = getSekku(ymd8);
+
+  let line = `${fmt(ymd8)}(${week})`;
+  if (holiday) line += `🎌${holiday}`;
+  if (sekki) line += ` ${sekki}`;
+  if (sekku) line += ` ${sekku}`;
+
+  output.textContent = line;
 };
 
-/* ---------- 表示 ---------- */
-loadBtn.onclick = () => render(false);
-memoBtn.onclick = () => render(true);
-
-function render(showMemo) {
-  copyBtn.disabled = true;
-
-  const s = startInput.value.replace(/-/g,"");
-  const e = endInput.value.replace(/-/g,"");
-  const key = keywordInput.value.toLowerCase();
-
-  const lines = [];
-
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b => {
+/* ---------- 祝日取得 ---------- */
+function getHoliday(targetYmd){
+  let name = "";
+  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
     const get = r => (b.match(r)||[])[1] || "";
-    const start = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
-    const end   = get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
+    const start = get(/DTSTART;VALUE=DATE:(\d{8})/);
     const title = get(/SUMMARY:(.+)/);
+    if(start === targetYmd) name = title;
+  });
+  return name;
+}
 
-    if (!start || !end) return;
+/* ---------- 五節句 ---------- */
+function getSekku(ymd){
+  const table = {
+    "0107":"人日",
+    "0303":"上巳",
+    "0505":"端午",
+    "0707":"七夕",
+    "0909":"重陽"
+  };
+  return table[ymd.slice(4,8)] || "";
+}
 
-    const ymd8 = start.slice(0,8);
-    const isMemo = ymd8 === "99991231";
+/* ---------- 二十四節気（年別正確計算） ---------- */
+function getSekki(date){
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
 
-    if (showMemo !== isMemo) return;
-    if (!showMemo && (ymd8 < s || ymd8 > e)) return;
-    if (key && !title.toLowerCase().includes(key)) return;
+  const sekkiTable = [
+    {name:"小寒", month:1,  base:6.3811},
+    {name:"大寒", month:1,  base:20.8431},
+    {name:"立春", month:2,  base:4.8693},
+    {name:"雨水", month:2,  base:19.7062},
+    {name:"啓蟄", month:3,  base:5.63},
+    {name:"春分", month:3,  type:"spring"},
+    {name:"清明", month:4,  base:4.81},
+    {name:"穀雨", month:4,  base:20.1},
+    {name:"立夏", month:5,  base:5.52},
+    {name:"小満", month:5,  base:21.04},
+    {name:"芒種", month:6,  base:5.678},
+    {name:"夏至", month:6,  base:21.37},
+    {name:"小暑", month:7,  base:7.108},
+    {name:"大暑", month:7,  base:22.83},
+    {name:"立秋", month:8,  base:7.5},
+    {name:"処暑", month:8,  base:23.13},
+    {name:"白露", month:9,  base:7.646},
+    {name:"秋分", month:9,  type:"autumn"},
+    {name:"寒露", month:10, base:8.318},
+    {name:"霜降", month:10, base:23.438},
+    {name:"立冬", month:11, base:7.438},
+    {name:"小雪", month:11, base:22.36},
+    {name:"大雪", month:12, base:7.18},
+    {name:"冬至", month:12, base:21.94}
+  ];
 
-    let startTime = "00:00";
-    let endTime   = "24:00";
+  for (const s of sekkiTable) {
+    if (s.month !== m) continue;
 
-    if (start.includes("T")) {
-      startTime = `${start.slice(9,11)}:${start.slice(11,13)}`;
-      endTime   = `${end.slice(9,11)}:${end.slice(11,13)}`;
+    let day;
+
+    if (s.type === "spring") {
+      day = Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+    } else if (s.type === "autumn") {
+      day = Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+    } else {
+      day = Math.floor(s.base + 0.242194*(y-1980) - Math.floor((y-1980)/4));
     }
 
-    lines.push({
-      key: `${ymd8}${startTime}`,
-      text: `${fmt(ymd8)} ${startTime}${title}${endTime}`
-    });
-  });
-
-  lines.sort((a,b)=>a.key.localeCompare(b.key));
-
-  output.textContent = lines.length
-    ? lines.map(l=>l.text).join("\n")
-    : (showMemo ? "メモはありません" : "条件に一致する予定はありません");
-
-  if (lines.length) copyBtn.disabled = false;
+    if (day === d) return s.name;
+  }
+  return "";
 }
-
-/* ---------- コピー ---------- */
-copyBtn.onclick = async () => {
-  const text = output.textContent
-    .split("\n")
-    .map(line => line.slice(11)) // yyyy-mm-dd + space を削除
-    .join("\n");
-
-  await navigator.clipboard.writeText(text);
-  alert("コピーしました");
-};
 
 /* ---------- util ---------- */
 function fmt(ymd){return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
-function ymd(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
-function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
 </script>
 </body>
 </html>
