@@ -124,7 +124,20 @@ async function init() {
 
   output.textContent = "条件を指定して「表示」を押してください";
 }
+startInput.addEventListener("change", () => {
+  // 終了日の最小値を開始日に合わせる
+  endInput.min = startInput.value;
 
+  // 終了日が未入力、または開始日より前なら同じ日にする
+  if (!endInput.value || endInput.value < startInput.value) {
+    endInput.value = startInput.value;
+  }
+});
+endInput.addEventListener("change", () => {
+  if (endInput.value < startInput.value) {
+    endInput.value = startInput.value;
+  }
+});
 /* ---------- 日付操作 ---------- */
 todayBtn.onclick = () => {
   const t = ymd(new Date());
