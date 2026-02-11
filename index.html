@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>予定一覧（ガントチャート風）</title>
+
 <style>
 body {
   font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -15,9 +16,6 @@ body {
 .controls label {
   margin-right: 12px;
 }
-.controls input[type="text"], .controls input[type="date"] {
-  width: 180px;
-}
 button {
   padding: 4px 10px;
   margin-right: 4px;
@@ -28,232 +26,156 @@ button {
   color: #555;
   margin-bottom: 8px;
 }
-#ganttContainer {
+#ganttWrapper {
   overflow-x: auto;
   border: 1px solid #ccc;
-  padding: 6px;
 }
-.gantt-chart {
-  display: flex;
+#gantt {
   position: relative;
   min-height: 40px;
 }
-.gantt-date {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: 12px;
-  width: 40px;
-  text-align: center;
-  margin-right: 2px;
-}
-.event-bar {
+.event {
   position: absolute;
-  height: 24px;
+  height: 22px;
   border-radius: 4px;
-  color: #000;
   font-size: 12px;
-  padding-left: 2px;
+  padding: 2px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: #3399ff;
+  color: white;
 }
-.event-bar.normal { background: #3399ff; color: #fff; }
-.event-bar.memo { background: #ffcc00; color: #000; }
-.memo-section {
+.memo {
+  background: #ffcc00;
+  color: #000;
+}
+#memoArea {
   margin-top: 16px;
-}
-.memo-section h3 {
-  margin-bottom: 4px;
-}
-.memo-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 </style>
 </head>
+
 <body>
 <h2>予定一覧（ガントチャート風）</h2>
-<div class="range" id="rangeInfo">ICSの有効期間を取得中…</div>
+
+<div class="range" id="rangeInfo">読込中…</div>
 
 <div class="controls">
-  <label>開始日：
-    <input type="date" id="startDate" disabled>
-  </label>
-  <label>終了日：
-    <input type="date" id="endDate" disabled>
-  </label>
+  <label>開始日 <input type="date" id="startDate"></label>
+  <label>終了日 <input type="date" id="endDate"></label>
 
-  <button id="todayBtn" disabled>今日</button>
-  <button id="weekBtn" disabled>今週</button>
-  <button id="monthBtn" disabled>今月</button>
-  <button id="allBtn" disabled>全期間</button>
-  <button id="memoBtn" disabled>メモ一覧</button>
-
-  <label>検索：
-    <input type="text" id="keyword" placeholder="件名・場所">
-  </label>
-  <button id="loadBtn" disabled>データ読込</button>
+  <button id="todayBtn">今日</button>
+  <button id="weekBtn">今週</button>
+  <button id="monthBtn">今月</button>
+  <button id="allBtn">全期間</button>
+  <button id="memoBtn">メモ一覧</button>
+  <button id="loadBtn">表示</button>
 </div>
 
-<div id="ganttContainer">
-  <div id="ganttChart" class="gantt-chart">初期化中…</div>
+<div id="ganttWrapper">
+  <div id="gantt"></div>
 </div>
-<div class="memo-section" id="memoSection" style="display:none">
-  <h3>メモ一覧</h3>
-  <div class="memo-list" id="memoList"></div>
-</div>
+
+<div id="memoArea" style="display:none"></div>
 
 <script>
 const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
+const DAY_WIDTH = 80;
 
+const gantt = document.getElementById("gantt");
+const memoArea = document.getElementById("memoArea");
+const rangeInfo = document.getElementById("rangeInfo");
 const startInput = document.getElementById("startDate");
-const endInput   = document.getElementById("endDate");
-const keywordInput = document.getElementById("keyword");
-const loadBtn    = document.getElementById("loadBtn");
-const todayBtn   = document.getElementById("todayBtn");
-const weekBtn    = document.getElementById("weekBtn");
-const monthBtn   = document.getElementById("monthBtn");
-const allBtn     = document.getElementById("allBtn");
-const memoBtn    = document.getElementById("memoBtn");
-const ganttChart = document.getElementById("ganttChart");
-const ganttContainer = document.getElementById("ganttContainer");
-const memoSection = document.getElementById("memoSection");
-const memoList = document.getElementById("memoList");
-const rangeInfo  = document.getElementById("rangeInfo");
+const endInput = document.getElementById("endDate");
 
-let cachedICS = null;
-let minDate = null;
-let maxDate = null;
+let events = [];
+let minDate, maxDate;
 
-// 初期化
 init();
 
 async function init() {
-  try {
-    const res = await fetch(WORKER_URL);
-    const text = await res.text();
-    cachedICS = text.replace(/\r?\n[ \t]/g, "");
-    const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-    minDate = null;
-    maxDate = null;
-    events.forEach(block => {
-      const m = block.match(/DTSTART[^:]*:(\d{8})/);
-      if (!m) return;
-      const date = m[1];
-      if (date === "99991231") return;
-      if (!minDate || date < minDate) minDate = date;
-      if (!maxDate || date > maxDate) maxDate = date;
-    });
-    if (!minDate || !maxDate) {
-      rangeInfo.textContent = "ICS内に予定が見つかりません";
-      return;
-    }
-    rangeInfo.textContent = `ICSの有効期間：${formatYMD(minDate)} ～ ${formatYMD(maxDate)}`;
-    startInput.min = formatYMD(minDate);
-    startInput.max = formatYMD(maxDate);
-    endInput.min   = formatYMD(minDate);
-    endInput.max   = formatYMD(maxDate);
-    startInput.value = formatYMD(minDate);
-    endInput.value   = formatYMD(maxDate);
-    startInput.disabled = false;
-    endInput.disabled   = false;
-    loadBtn.disabled    = false;
-    todayBtn.disabled   = false;
-    weekBtn.disabled    = false;
-    monthBtn.disabled   = false;
-    allBtn.disabled     = false;
-    memoBtn.disabled    = false;
-    ganttChart.textContent = "条件を指定して「データ読込」または「メモ一覧」を押してください";
-  } catch(e) {
-    rangeInfo.textContent = "ICSの初期化に失敗しました";
-    console.error(e);
-  }
-}
+  const text = await (await fetch(WORKER_URL)).text();
+  const blocks = text.split("BEGIN:VEVENT").slice(1);
 
-function formatYMD(yyyymmdd){return `${yyyymmdd.slice(0,4)}-${yyyymmdd.slice(4,6)}-${yyyymmdd.slice(6,8)}`;}
-function toYMD(dateStr){return dateStr.replace(/-/g,'');}
-function dateToYMD(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
-function clampYMD(ymd){if(ymd<minDate) return minDate; if(ymd>maxDate) return maxDate; return ymd;}
-
-todayBtn.addEventListener("click",()=>{const today=dateToYMD(new Date());startInput.value=formatYMD(clampYMD(today));endInput.value=formatYMD(clampYMD(today));});
-weekBtn.addEventListener("click",()=>{const now=new Date();const day=now.getDay();const offset=(day===0?-6:1)-day;const start=new Date(now);start.setDate(now.getDate()+offset);const end=new Date(start);end.setDate(start.getDate()+6);startInput.value=formatYMD(clampYMD(dateToYMD(start)));endInput.value=formatYMD(clampYMD(dateToYMD(end)));});
-monthBtn.addEventListener("click",()=>{const now=new Date();const start=new Date(now.getFullYear(),now.getMonth(),1);const end=new Date(now.getFullYear(),now.getMonth()+1,0);startInput.value=formatYMD(clampYMD(dateToYMD(start)));endInput.value=formatYMD(clampYMD(dateToYMD(end)));});
-allBtn.addEventListener("click",()=>{startInput.value=formatYMD(minDate);endInput.value=formatYMD(maxDate);});
-memoBtn.addEventListener("click",()=>{renderEvents(true);});
-loadBtn.addEventListener("click",()=>{renderEvents(false);});
-
-function renderEvents(showMemoOnly){
-  const startYMD = showMemoOnly?null:toYMD(startInput.value);
-  const endYMD = showMemoOnly?null:toYMD(endInput.value);
-  const keyword = keywordInput.value.trim().toLowerCase();
-  const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-  const items = [];
-  const memos = [];
-
-  events.forEach(block=>{
-    const get = re=>(block.match(re)||[])[1]?.trim()||"";
-    const summary=get(/SUMMARY:(.+)/);
-    const location=get(/LOCATION:(.+)/);
-    const startRaw=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
-    const endRaw=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
-    if(!startRaw||!endRaw) return;
-    const ymd=startRaw.slice(0,8);
-    const isMemo = ymd==="99991231";
-
-    if(showMemoOnly&&!isMemo) return;
-    if(!showMemoOnly&&isMemo) return;
-    if(!showMemoOnly&&(ymd<startYMD||ymd>endYMD)) return;
-    if(keyword&&!`${summary} ${location}`.toLowerCase().includes(keyword)) return;
-
-    if(isMemo) memos.push({summary,location});
-    else items.push({startRaw,endRaw,summary,location});
+  events = blocks.map(b => {
+    const get = r => (b.match(r)||[])[1]||"";
+    return {
+      start: get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/),
+      end:   get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/),
+      title: get(/SUMMARY:(.+)/),
+      memo:  get(/DTSTART[^:]*:(\d{8})/)[1] === "99991231"
+    };
   });
 
-  // ガントチャート描画
-  if(!showMemoOnly){
-    memoSection.style.display="none";
-    ganttChart.innerHTML="";
-    if(items.length===0){ganttChart.textContent="条件に一致する予定はありません";return;}
-    // 横軸日付範囲
-    const dates = [];
-    const startDt = new Date(startInput.value);
-    const endDt = new Date(endInput.value);
-    for(let d=new Date(startDt);d<=endDt;d.setDate(d.getDate()+1)){
-      dates.push(new Date(d));
-    }
-    const dayWidth=60;
-    const chartHeight=items.length*30;
-    ganttChart.style.height=chartHeight+"px";
-    ganttChart.style.position="relative";
-    items.forEach((ev,i)=>{
-      const bar=document.createElement("div");
-      bar.className="event-bar normal";
-      bar.style.top=(i*30)+"px";
-      bar.style.height="24px";
-      const evStart=ev.startRaw.includes("T")?new Date(`${ev.startRaw.slice(0,4)}-${ev.startRaw.slice(4,6)}-${ev.startRaw.slice(6,8)}T${ev.startRaw.slice(9,11)}:${ev.startRaw.slice(11,13)}:00`):new Date(`${ev.startRaw.slice(0,4)}-${ev.startRaw.slice(4,6)}-${ev.startRaw.slice(6,8)}`);
-      const evEnd=ev.endRaw.includes("T")?new Date(`${ev.endRaw.slice(0,4)}-${ev.endRaw.slice(4,6)}-${ev.endRaw.slice(6,8)}T${ev.endRaw.slice(9,11)}:${ev.endRaw.slice(11,13)}:00`):new Date(`${ev.endRaw.slice(0,4)}-${ev.endRaw.slice(4,6)}-${ev.endRaw.slice(6,8)}`);
-      const offset = (evStart - startDt)/(1000*60*60*24)*dayWidth;
-      const width = Math.max((evEnd-evStart)/(1000*60*60*24)*dayWidth, dayWidth*0.5);
-      bar.style.left=offset+"px";
-      bar.style.width=width+"px";
-      bar.textContent=ev.summary;
-      ganttChart.appendChild(bar);
-    });
-  } else {
-    // メモ描画
-    memoSection.style.display="block";
-    memoList.innerHTML="";
-    if(memos.length===0){memoList.textContent="メモはありません";return;}
-    memos.forEach(m=>{
-      const el=document.createElement("div");
-      el.textContent=m.summary+(m.location?` @${m.location}`:"");
-      el.className="event-bar memo";
-      el.style.width="200px";
-      memoList.appendChild(el);
-    });
-  }
+  const dates = events.filter(e=>!e.memo).map(e=>e.start.slice(0,8));
+  minDate = dates.sort()[0];
+  maxDate = dates.sort().slice(-1)[0];
+
+  rangeInfo.textContent = `期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
+  startInput.value = fmt(minDate);
+  endInput.value = fmt(maxDate);
 }
+
+document.getElementById("allBtn").onclick = ()=>{
+  startInput.value = fmt(minDate);
+  endInput.value = fmt(maxDate);
+};
+document.getElementById("todayBtn").onclick = ()=>{
+  const t = ymd(new Date());
+  startInput.value = fmt(t);
+  endInput.value = fmt(t);
+};
+document.getElementById("weekBtn").onclick = ()=>{
+  const d=new Date();const w=d.getDay();d.setDate(d.getDate()-(w===0?6:w-1));
+  startInput.value=fmt(ymd(d));d.setDate(d.getDate()+6);endInput.value=fmt(ymd(d));
+};
+document.getElementById("monthBtn").onclick = ()=>{
+  const d=new Date();startInput.value=fmt(ymd(new Date(d.getFullYear(),d.getMonth(),1)));
+  endInput.value=fmt(ymd(new Date(d.getFullYear(),d.getMonth()+1,0)));
+};
+
+document.getElementById("memoBtn").onclick = ()=>{
+  gantt.innerHTML="";
+  memoArea.style.display="block";
+  memoArea.innerHTML="<h3>メモ一覧</h3>";
+  events.filter(e=>e.memo).forEach(e=>{
+    const d=document.createElement("div");
+    d.className="event memo";
+    d.textContent=e.title;
+    d.style.position="static";
+    memoArea.appendChild(d);
+  });
+};
+
+document.getElementById("loadBtn").onclick = render;
+
+function render(){
+  memoArea.style.display="none";
+  gantt.innerHTML="";
+  const s = startInput.value.replace(/-/g,"");
+  const e = endInput.value.replace(/-/g,"");
+
+  let row=0;
+  events.filter(ev=>!ev.memo && ev.start.slice(0,8)>=s && ev.start.slice(0,8)<=e)
+    .forEach(ev=>{
+      const left = (ev.start.slice(0,8)-s)/1 * DAY_WIDTH;
+      const width = DAY_WIDTH;
+      const el=document.createElement("div");
+      el.className="event";
+      el.style.left=left+"px";
+      el.style.top=(row++*26)+"px";
+      el.style.width=width+"px";
+      el.textContent=ev.title;
+      gantt.appendChild(el);
+    });
+
+  gantt.style.width=((e-s+1)*DAY_WIDTH)+"px";
+  gantt.style.height=(row*26+10)+"px";
+}
+
+function fmt(ymd){return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
+function ymd(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
 </script>
 </body>
 </html>
