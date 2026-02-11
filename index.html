@@ -21,12 +21,13 @@ body {
 .controls label {
   margin-right: 12px;
 }
-.controls input[type="text"] {
+.controls input[type="text"], .controls input[type="date"] {
   width: 200px;
 }
 button {
   padding: 4px 10px;
   margin-right: 4px;
+  margin-top: 4px;
 }
 pre {
   white-space: pre-wrap;
@@ -34,23 +35,28 @@ pre {
   background: #f6f6f6;
   padding: 12px;
 }
+@media (max-width: 480px) {
+  .controls label, .controls input, .controls button {
+    display: block;
+    margin-bottom: 8px;
+  }
+  .controls input[type="text"], .controls input[type="date"] {
+    width: 100%;
+  }
+}
 </style>
 </head>
 
 <body>
 <h2>予定一覧</h2>
 
-<div class="range" id="rangeInfo">
-  ICSの有効期間を取得中…
-</div>
+<div class="range" id="rangeInfo">ICSの有効期間を取得中…</div>
 
 <div class="controls">
-  <label>
-    開始日：
+  <label>開始日：
     <input type="date" id="startDate" disabled>
   </label>
-  <label>
-    終了日：
+  <label>終了日：
     <input type="date" id="endDate" disabled>
   </label>
 
@@ -58,8 +64,7 @@ pre {
   <button id="weekBtn" disabled>今週</button>
   <button id="monthBtn" disabled>今月</button>
 
-  <label>
-    検索：
+  <label>検索：
     <input type="text" id="keyword" placeholder="件名・場所">
   </label>
   <button id="loadBtn" disabled>データ読込</button>
@@ -68,8 +73,7 @@ pre {
 <pre id="out">初期化中…</pre>
 
 <script>
-const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"
-
+const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/";
 const startInput = document.getElementById("startDate");
 const endInput   = document.getElementById("endDate");
 const keywordInput = document.getElementById("keyword");
@@ -100,7 +104,6 @@ async function init() {
     events.forEach(block => {
       const m = block.match(/DTSTART[^:]*:(\d{8})/);
       if (!m) return;
-
       const date = parseDate(m[1]);
       if (!minDate || date < minDate) minDate = date;
       if (!maxDate || date > maxDate) maxDate = date;
@@ -139,12 +142,12 @@ async function init() {
   }
 }
 
+// parseDate を午前0時固定に
 function parseDate(yyyymmdd) {
-  return new Date(
-    yyyymmdd.slice(0,4),
-    Number(yyyymmdd.slice(4,6)) - 1,
-    yyyymmdd.slice(6,8)
-  );
+  const y = Number(yyyymmdd.slice(0,4));
+  const m = Number(yyyymmdd.slice(4,6)) - 1;
+  const d = Number(yyyymmdd.slice(6,8));
+  return new Date(y, m, d, 0, 0, 0, 0);
 }
 
 function formatDate(date) {
@@ -163,6 +166,7 @@ function clamp(date) {
 // 今日
 todayBtn.addEventListener("click", () => {
   const d = clamp(new Date());
+  d.setHours(0,0,0,0); // 追加: 午前0時に揃える
   const s = formatDate(d);
   startInput.value = s;
   endInput.value   = s;
@@ -171,6 +175,7 @@ todayBtn.addEventListener("click", () => {
 // 今週（月曜始まり）
 weekBtn.addEventListener("click", () => {
   const now = new Date();
+  now.setHours(0,0,0,0);
   const day = now.getDay(); // 0=日
   const mondayOffset = (day === 0 ? -6 : 1) - day;
 
@@ -187,6 +192,7 @@ weekBtn.addEventListener("click", () => {
 // 今月
 monthBtn.addEventListener("click", () => {
   const now = new Date();
+  now.setHours(0,0,0,0);
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
@@ -198,6 +204,9 @@ monthBtn.addEventListener("click", () => {
 loadBtn.addEventListener("click", () => {
   const startDate = new Date(startInput.value);
   const endDate   = new Date(endInput.value);
+
+  startDate.setHours(0,0,0,0);
+  endDate.setHours(23,59,59,999);
 
   if (startDate > endDate) {
     output.textContent = "開始日は終了日以前にしてください";
