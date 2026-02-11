@@ -68,10 +68,9 @@ async function init(){
   cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
     const m=b.match(/DTSTART[^:]*:(\d{8})/);
     if(!m) return;
-
     const ymd=m[1];
 
-    // ★ メモ(99991231)は期間算出から除外
+    // メモ(99991231)除外
     if(ymd==="99991231") return;
 
     if(!minDate||ymd<minDate) minDate=ymd;
@@ -137,7 +136,6 @@ function render(showMemo){
   const s=startInput.value.replace(/-/g,"");
   const e=endInput.value.replace(/-/g,"");
   const key=keywordInput.value.toLowerCase();
-
   const lines=[];
 
   cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
@@ -145,7 +143,6 @@ function render(showMemo){
     const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
-
     if(!start) return;
 
     const ymd8=start.slice(0,8);
@@ -170,7 +167,6 @@ function render(showMemo){
   });
 
   lines.sort((a,b)=>a.key.localeCompare(b.key));
-
   output.textContent=lines.length
     ? lines.map(l=>l.text).join("\n")
     : (showMemo?"メモはありません":"予定はありません");
@@ -181,14 +177,94 @@ headingBtn.onclick=()=>{
   const ymd8=startInput.value.replace(/-/g,"");
   const d=new Date(startInput.value);
   const week=["日","月","火","水","木","金","土"][d.getDay()];
-  output.textContent=`${fmt(ymd8)}(${week})`;
+
+  const holiday=getHoliday(ymd8);
+  const sekki=getSekki(d);
+  const sekku=getSekku(ymd8);
+
+  let line=`${fmt(ymd8)}(${week})`;
+  if(holiday) line+=`🎌${holiday}`;
+  if(sekki) line+=` ${sekki}`;
+  if(sekku) line+=` ${sekku}`;
+
+  output.textContent=line;
 };
+
+/* ---------- 祝日取得 ---------- */
+function getHoliday(targetYmd){
+  let name="";
+  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
+    const start=(b.match(/DTSTART;VALUE=DATE:(\d{8})/)||[])[1];
+    const title=(b.match(/SUMMARY:(.+)/)||[])[1];
+    if(start===targetYmd) name=title;
+  });
+  return name;
+}
+
+/* ---------- 五節句 ---------- */
+function getSekku(ymd){
+  const table={
+    "0107":"人日",
+    "0303":"上巳",
+    "0505":"端午",
+    "0707":"七夕",
+    "0909":"重陽"
+  };
+  return table[ymd.slice(4,8)]||"";
+}
+
+/* ---------- 二十四節気（年別計算） ---------- */
+function getSekki(date){
+  const y=date.getFullYear();
+  const m=date.getMonth()+1;
+  const d=date.getDate();
+
+  const table=[
+    {name:"小寒",month:1,base:6.3811},
+    {name:"大寒",month:1,base:20.8431},
+    {name:"立春",month:2,base:4.8693},
+    {name:"雨水",month:2,base:19.7062},
+    {name:"啓蟄",month:3,base:5.63},
+    {name:"春分",month:3,type:"spring"},
+    {name:"清明",month:4,base:4.81},
+    {name:"穀雨",month:4,base:20.1},
+    {name:"立夏",month:5,base:5.52},
+    {name:"小満",month:5,base:21.04},
+    {name:"芒種",month:6,base:5.678},
+    {name:"夏至",month:6,base:21.37},
+    {name:"小暑",month:7,base:7.108},
+    {name:"大暑",month:7,base:22.83},
+    {name:"立秋",month:8,base:7.5},
+    {name:"処暑",month:8,base:23.13},
+    {name:"白露",month:9,base:7.646},
+    {name:"秋分",month:9,type:"autumn"},
+    {name:"寒露",month:10,base:8.318},
+    {name:"霜降",month:10,base:23.438},
+    {name:"立冬",month:11,base:7.438},
+    {name:"小雪",month:11,base:22.36},
+    {name:"大雪",month:12,base:7.18},
+    {name:"冬至",month:12,base:21.94}
+  ];
+
+  for(const s of table){
+    if(s.month!==m) continue;
+    let day;
+    if(s.type==="spring")
+      day=Math.floor(20.8431+0.242194*(y-1980)-Math.floor((y-1980)/4));
+    else if(s.type==="autumn")
+      day=Math.floor(23.2488+0.242194*(y-1980)-Math.floor((y-1980)/4));
+    else
+      day=Math.floor(s.base+0.242194*(y-1980)-Math.floor((y-1980)/4));
+    if(day===d) return s.name;
+  }
+  return "";
+}
 
 /* ---------- util ---------- */
 function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
 function ymd(d){return d.getFullYear().toString().padStart(4,'0')+
-  (d.getMonth()+1).toString().padStart(2,'0')+
-  d.getDate().toString().padStart(2,'0');}
+ (d.getMonth()+1).toString().padStart(2,'0')+
+ d.getDate().toString().padStart(2,'0');}
 function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
 </script>
 </body>
