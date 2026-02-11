@@ -4,46 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>予定一覧</title>
-
 <style>
-body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  padding: 16px;
-}
-.range { font-size: 13px; color: #555; margin-bottom: 8px; }
-.controls { margin-bottom: 12px; }
-.controls label { margin-right: 12px; }
-.controls input[type="date"], .controls input[type="text"] { width: 180px; }
-button { padding: 4px 10px; margin-right: 4px; margin-top: 4px; }
-pre { white-space: pre-wrap; background: #f6f6f6; padding: 12px; font-size: 14px; }
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding:16px;}
+.range { font-size:13px;color:#555;margin-bottom:8px;}
+.controls{margin-bottom:12px;}
+.controls label{margin-right:12px;}
+button{padding:4px 10px;margin-right:4px;margin-top:4px;}
+pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 </style>
 </head>
-
 <body>
-<h2>予定一覧</h2>
 
+<h2>予定一覧</h2>
 <div class="range" id="rangeInfo">読込中…</div>
 
 <div class="controls">
-  <label>開始日：
-    <input type="date" id="startDate" disabled>
-  </label>
-  <label>終了日：
-    <input type="date" id="endDate" disabled>
-  </label>
+<label>開始日：<input type="date" id="startDate" disabled></label>
+<label>終了日：<input type="date" id="endDate" disabled></label>
 
-  <button id="todayBtn" disabled>今日</button>
-  <button id="weekBtn" disabled>今週</button>
-  <button id="monthBtn" disabled>今月</button>
-  <button id="allBtn" disabled>全期間</button>
-  <button id="memoBtn" disabled>メモ一覧</button>
-  <button id="headingBtn" disabled>見出し</button>
+<button id="todayBtn" disabled>今日</button>
+<button id="weekBtn" disabled>今週</button>
+<button id="monthBtn" disabled>今月</button>
+<button id="allBtn" disabled>全期間</button>
+<button id="memoBtn" disabled>メモ一覧</button>
+<button id="headingBtn" disabled>見出し</button>
 
-  <label>検索：
-    <input type="text" id="keyword" placeholder="件名">
-  </label>
-  <button id="loadBtn" disabled>表示</button>
-  <button id="copyBtn" disabled>コピー</button>
+<label>検索：<input type="text" id="keyword"></label>
+<button id="loadBtn" disabled>表示</button>
+<button id="copyBtn" disabled>コピー</button>
 </div>
 
 <pre id="out">初期化中…</pre>
@@ -51,146 +39,157 @@ pre { white-space: pre-wrap; background: #f6f6f6; padding: 12px; font-size: 14px
 <script>
 const WORKER_URL = "https://get-gcalschedule.t-osato.workers.dev/"; // Cloudflare Worker URL
 
-const startInput = document.getElementById("startDate");
-const endInput   = document.getElementById("endDate");
-const keywordInput = document.getElementById("keyword");
-const output     = document.getElementById("out");
+const startInput=document.getElementById("startDate");
+const endInput=document.getElementById("endDate");
+const keywordInput=document.getElementById("keyword");
+const output=document.getElementById("out");
 
-const todayBtn = document.getElementById("todayBtn");
-const weekBtn  = document.getElementById("weekBtn");
-const monthBtn = document.getElementById("monthBtn");
-const allBtn   = document.getElementById("allBtn");
-const memoBtn  = document.getElementById("memoBtn");
-const loadBtn  = document.getElementById("loadBtn");
-const copyBtn  = document.getElementById("copyBtn");
-const headingBtn = document.getElementById("headingBtn");
-const rangeInfo = document.getElementById("rangeInfo");
+const todayBtn=document.getElementById("todayBtn");
+const weekBtn=document.getElementById("weekBtn");
+const monthBtn=document.getElementById("monthBtn");
+const allBtn=document.getElementById("allBtn");
+const memoBtn=document.getElementById("memoBtn");
+const loadBtn=document.getElementById("loadBtn");
+const copyBtn=document.getElementById("copyBtn");
+const headingBtn=document.getElementById("headingBtn");
+const rangeInfo=document.getElementById("rangeInfo");
 
-let cachedICS = "";
-let minDate = null;
-let maxDate = null;
+let cachedICS="";
+let minDate=null;
+let maxDate=null;
 
 init();
 
 /* ---------- 初期化 ---------- */
-async function init() {
-  const res = await fetch(WORKER_URL);
-  cachedICS = (await res.text()).replace(/\r?\n[ \t]/g, "");
+async function init(){
+  const res=await fetch(WORKER_URL);
+  cachedICS=(await res.text()).replace(/\r?\n[ \t]/g,"");
 
-  const events = cachedICS.split("BEGIN:VEVENT").slice(1);
-  events.forEach(b => {
-    const m = b.match(/DTSTART[^:]*:(\d{8})/);
-    if (!m) return;
-    if (!minDate || m[1] < minDate) minDate = m[1];
-    if (!maxDate || m[1] > maxDate) maxDate = m[1];
+  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
+    const m=b.match(/DTSTART[^:]*:(\d{8})/);
+    if(!m) return;
+
+    const ymd=m[1];
+
+    // ★ メモ(99991231)は期間算出から除外
+    if(ymd==="99991231") return;
+
+    if(!minDate||ymd<minDate) minDate=ymd;
+    if(!maxDate||ymd>maxDate) maxDate=ymd;
   });
 
-  rangeInfo.textContent = `期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
+  rangeInfo.textContent=`予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
 
-  startInput.value = fmt(minDate);
-  endInput.value   = fmt(maxDate);
+  startInput.min=endInput.min=fmt(minDate);
+  startInput.max=endInput.max=fmt(maxDate);
+  startInput.value=fmt(minDate);
+  endInput.value=fmt(maxDate);
 
-  [startInput, endInput, todayBtn, weekBtn, monthBtn, allBtn,
-   memoBtn, loadBtn, headingBtn].forEach(e => e.disabled = false);
+  [startInput,endInput,todayBtn,weekBtn,monthBtn,allBtn,
+   memoBtn,loadBtn,headingBtn].forEach(e=>e.disabled=false);
 
-  output.textContent = "条件を指定してください";
+  output.textContent="条件を指定してください";
+}
+
+/* ---------- 日付補正 ---------- */
+startInput.onchange=()=>{
+  endInput.min=startInput.value;
+  if(endInput.value<startInput.value)
+    endInput.value=startInput.value;
+};
+
+/* ---------- 今日 ---------- */
+todayBtn.onclick=()=>{
+  const t=clamp(ymd(new Date()));
+  startInput.value=endInput.value=fmt(t);
+};
+
+/* ---------- 今週 ---------- */
+weekBtn.onclick=()=>{
+  const d=new Date();
+  const w=d.getDay();
+  d.setDate(d.getDate()-(w===0?6:w-1));
+  startInput.value=fmt(clamp(ymd(d)));
+  d.setDate(d.getDate()+6);
+  endInput.value=fmt(clamp(ymd(d)));
+};
+
+/* ---------- 今月 ---------- */
+monthBtn.onclick=()=>{
+  const d=new Date();
+  const first=new Date(d.getFullYear(),d.getMonth(),1);
+  const last=new Date(d.getFullYear(),d.getMonth()+1,0);
+  startInput.value=fmt(clamp(ymd(first)));
+  endInput.value=fmt(clamp(ymd(last)));
+};
+
+/* ---------- 全期間（予定のみ） ---------- */
+allBtn.onclick=()=>{
+  startInput.value=fmt(minDate);
+  endInput.value=fmt(maxDate);
+};
+
+/* ---------- 表示 ---------- */
+loadBtn.onclick=()=>render(false);
+memoBtn.onclick=()=>render(true);
+
+function render(showMemo){
+  const s=startInput.value.replace(/-/g,"");
+  const e=endInput.value.replace(/-/g,"");
+  const key=keywordInput.value.toLowerCase();
+
+  const lines=[];
+
+  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
+    const get=r=>(b.match(r)||[])[1]||"";
+    const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
+    const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
+    const title=get(/SUMMARY:(.+)/);
+
+    if(!start) return;
+
+    const ymd8=start.slice(0,8);
+    const isMemo=(ymd8==="99991231");
+
+    if(showMemo!==isMemo) return;
+    if(!showMemo && (ymd8<s||ymd8>e)) return;
+    if(key && !title.toLowerCase().includes(key)) return;
+
+    let startTime="", endTime="";
+    if(start.includes("T")){
+      startTime=`${start.slice(9,11)}:${start.slice(11,13)}`;
+      endTime=`${end.slice(9,11)}:${end.slice(11,13)}`;
+    }
+
+    lines.push({
+      key:ymd8+startTime,
+      text:isMemo
+        ? `${startTime}${title}`
+        : `${fmt(ymd8)} ${startTime}${title}${endTime}`
+    });
+  });
+
+  lines.sort((a,b)=>a.key.localeCompare(b.key));
+
+  output.textContent=lines.length
+    ? lines.map(l=>l.text).join("\n")
+    : (showMemo?"メモはありません":"予定はありません");
 }
 
 /* ---------- 見出し ---------- */
-headingBtn.onclick = () => {
-  const ymd8 = startInput.value.replace(/-/g,"");
-  const d = new Date(startInput.value);
-  const week = ["日","月","火","水","木","金","土"][d.getDay()];
-
-  const holiday = getHoliday(ymd8);
-  const sekki = getSekki(d);
-  const sekku = getSekku(ymd8);
-
-  let line = `${fmt(ymd8)}(${week})`;
-  if (holiday) line += `🎌${holiday}`;
-  if (sekki) line += ` ${sekki}`;
-  if (sekku) line += ` ${sekku}`;
-
-  output.textContent = line;
+headingBtn.onclick=()=>{
+  const ymd8=startInput.value.replace(/-/g,"");
+  const d=new Date(startInput.value);
+  const week=["日","月","火","水","木","金","土"][d.getDay()];
+  output.textContent=`${fmt(ymd8)}(${week})`;
 };
 
-/* ---------- 祝日取得 ---------- */
-function getHoliday(targetYmd){
-  let name = "";
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
-    const get = r => (b.match(r)||[])[1] || "";
-    const start = get(/DTSTART;VALUE=DATE:(\d{8})/);
-    const title = get(/SUMMARY:(.+)/);
-    if(start === targetYmd) name = title;
-  });
-  return name;
-}
-
-/* ---------- 五節句 ---------- */
-function getSekku(ymd){
-  const table = {
-    "0107":"人日",
-    "0303":"上巳",
-    "0505":"端午",
-    "0707":"七夕",
-    "0909":"重陽"
-  };
-  return table[ymd.slice(4,8)] || "";
-}
-
-/* ---------- 二十四節気（年別正確計算） ---------- */
-function getSekki(date){
-  const y = date.getFullYear();
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-
-  const sekkiTable = [
-    {name:"小寒", month:1,  base:6.3811},
-    {name:"大寒", month:1,  base:20.8431},
-    {name:"立春", month:2,  base:4.8693},
-    {name:"雨水", month:2,  base:19.7062},
-    {name:"啓蟄", month:3,  base:5.63},
-    {name:"春分", month:3,  type:"spring"},
-    {name:"清明", month:4,  base:4.81},
-    {name:"穀雨", month:4,  base:20.1},
-    {name:"立夏", month:5,  base:5.52},
-    {name:"小満", month:5,  base:21.04},
-    {name:"芒種", month:6,  base:5.678},
-    {name:"夏至", month:6,  base:21.37},
-    {name:"小暑", month:7,  base:7.108},
-    {name:"大暑", month:7,  base:22.83},
-    {name:"立秋", month:8,  base:7.5},
-    {name:"処暑", month:8,  base:23.13},
-    {name:"白露", month:9,  base:7.646},
-    {name:"秋分", month:9,  type:"autumn"},
-    {name:"寒露", month:10, base:8.318},
-    {name:"霜降", month:10, base:23.438},
-    {name:"立冬", month:11, base:7.438},
-    {name:"小雪", month:11, base:22.36},
-    {name:"大雪", month:12, base:7.18},
-    {name:"冬至", month:12, base:21.94}
-  ];
-
-  for (const s of sekkiTable) {
-    if (s.month !== m) continue;
-
-    let day;
-
-    if (s.type === "spring") {
-      day = Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
-    } else if (s.type === "autumn") {
-      day = Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
-    } else {
-      day = Math.floor(s.base + 0.242194*(y-1980) - Math.floor((y-1980)/4));
-    }
-
-    if (day === d) return s.name;
-  }
-  return "";
-}
-
 /* ---------- util ---------- */
-function fmt(ymd){return `${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
+function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
+function ymd(d){return d.getFullYear().toString().padStart(4,'0')+
+  (d.getMonth()+1).toString().padStart(2,'0')+
+  d.getDate().toString().padStart(2,'0');}
+function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
 </script>
 </body>
 </html>
