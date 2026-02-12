@@ -89,12 +89,53 @@ async function init(){
   startInput.value=fmt(minDate);
   endInput.value=fmt(maxDate);
 
-  [startInput,endInput,startTimeInput,endTimeInput,
-   todayBtn,weekBtn,monthBtn,allBtn,
-   memoBtn,loadBtn,headingBtn].forEach(e=>e.disabled=false);
+  [
+    startInput,endInput,startTimeInput,endTimeInput,
+    todayBtn,weekBtn,monthBtn,allBtn,
+    memoBtn,loadBtn,headingBtn
+  ].forEach(e=>e.disabled=false);
 
   output.textContent="条件を指定してください";
 }
+
+/* ---------- 日付補正 ---------- */
+startInput.onchange=()=>{
+  endInput.min=startInput.value;
+  if(endInput.value<startInput.value)
+    endInput.value=startInput.value;
+};
+
+/* ---------- 今日 ---------- */
+todayBtn.onclick=()=>{
+  const t=clamp(ymd(new Date()));
+  startInput.value=fmt(t);
+  endInput.value=fmt(t);
+};
+
+/* ---------- 今週 ---------- */
+weekBtn.onclick=()=>{
+  const d=new Date();
+  const w=d.getDay();
+  d.setDate(d.getDate()-(w===0?6:w-1));
+  startInput.value=fmt(clamp(ymd(d)));
+  d.setDate(d.getDate()+6);
+  endInput.value=fmt(clamp(ymd(d)));
+};
+
+/* ---------- 今月 ---------- */
+monthBtn.onclick=()=>{
+  const d=new Date();
+  const first=new Date(d.getFullYear(),d.getMonth(),1);
+  const last=new Date(d.getFullYear(),d.getMonth()+1,0);
+  startInput.value=fmt(clamp(ymd(first)));
+  endInput.value=fmt(clamp(ymd(last)));
+};
+
+/* ---------- 全期間 ---------- */
+allBtn.onclick=()=>{
+  startInput.value=fmt(minDate);
+  endInput.value=fmt(maxDate);
+};
 
 /* ---------- 表示 ---------- */
 loadBtn.onclick=()=>render(false);
@@ -114,7 +155,6 @@ function render(showMemo){
   const lines=[];
 
   cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
-
     const get=r=>(b.match(r)||[])[1]||"";
     const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
@@ -253,6 +293,10 @@ function getSekki(date){
 
 /* ---------- util ---------- */
 function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
+function ymd(d){return d.getFullYear().toString().padStart(4,'0')+
+ (d.getMonth()+1).toString().padStart(2,'0')+
+ d.getDate().toString().padStart(2,'0');}
+function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
 </script>
 </body>
 </html>
