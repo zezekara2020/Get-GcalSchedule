@@ -70,8 +70,7 @@ async function init(){
     if(!m) return;
     const ymd=m[1];
 
-    // メモ(99991231)除外
-    if(ymd==="99991231") return;
+    if(ymd==="99991231") return; // メモ除外
 
     if(!minDate||ymd<minDate) minDate=ymd;
     if(!maxDate||ymd>maxDate) maxDate=ymd;
@@ -122,7 +121,7 @@ monthBtn.onclick=()=>{
   endInput.value=fmt(clamp(ymd(last)));
 };
 
-/* ---------- 全期間（予定のみ） ---------- */
+/* ---------- 全期間 ---------- */
 allBtn.onclick=()=>{
   startInput.value=fmt(minDate);
   endInput.value=fmt(maxDate);
@@ -167,10 +166,26 @@ function render(showMemo){
   });
 
   lines.sort((a,b)=>a.key.localeCompare(b.key));
+
   output.textContent=lines.length
     ? lines.map(l=>l.text).join("\n")
     : (showMemo?"メモはありません":"予定はありません");
+
+  copyBtn.disabled = lines.length===0;
 }
+
+/* ---------- コピー ---------- */
+copyBtn.onclick=async()=>{
+  const lines=output.textContent
+    .split("\n")
+    .filter(line=>/^\d{4}-\d{2}-\d{2}/.test(line))
+    .map(line=>line.slice(11));
+
+  if(!lines.length) return;
+
+  await navigator.clipboard.writeText(lines.join("\n"));
+  alert("コピーしました");
+};
 
 /* ---------- 見出し ---------- */
 headingBtn.onclick=()=>{
@@ -188,6 +203,7 @@ headingBtn.onclick=()=>{
   if(sekku) line+=` ${sekku}`;
 
   output.textContent=line;
+  copyBtn.disabled=true;
 };
 
 /* ---------- 祝日取得 ---------- */
@@ -205,15 +221,15 @@ function getHoliday(targetYmd){
 function getSekku(ymd){
   const table={
     "0107":"人日",
-    "0303":"上巳",
-    "0505":"端午",
-    "0707":"七夕",
-    "0909":"重陽"
+    "0303":"🎎雛祭",
+    "0505":"🎏端午",
+    "0707":"🎋七夕",
+    "0909":"🍶重陽"
   };
   return table[ymd.slice(4,8)]||"";
 }
 
-/* ---------- 二十四節気（年別計算） ---------- */
+/* ---------- 二十四節気 ---------- */
 function getSekki(date){
   const y=date.getFullYear();
   const m=date.getMonth()+1;
