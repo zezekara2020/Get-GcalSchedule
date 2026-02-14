@@ -42,7 +42,7 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <pre id="out">初期化中…</pre>
 
 <script>
-const WORKER_URL = "/api"; // Cloudflare Worker URL
+const WORKER_URL = "/api";
 
 const startInput=document.getElementById("startDate");
 const endInput=document.getElementById("endDate");
@@ -202,6 +202,27 @@ function render(showMemo){
   copyBtn.disabled=lines.length===0;
 }
 
+/* ---------- コピー ---------- */
+copyBtn.onclick = async () => {
+  // 現在表示されている行を取得
+  const lines = output.textContent.split("\n").filter(l => l.trim() !== "");
+
+  // 各行から開始時刻・タイトル・終了時刻を抽出
+  const copyText = lines.map(line => {
+    // 形式: "YYYY-MM-DD HH:MM-HH:MM タイトル"
+    const m = line.match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) (.+)/);
+    if (m) {
+      const [, date, start, end, title] = m;
+      return `${date}\t${start}\t${title}\t${end}`; // タブ区切りで複数列
+    }
+    return line; // メモ行などはそのまま
+  }).join("\n");
+
+  // クリップボードにコピー
+  await navigator.clipboard.writeText(copyText);
+  alert("予定をコピーしました");
+};
+
 /* ---------- 見出し ---------- */
 headingBtn.onclick=()=>{
   const ymd8=startInput.value.replace(/-/g,"");
@@ -235,7 +256,7 @@ function getHoliday(targetYmd){
 /* ---------- 五節句 ---------- */
 function getSekku(ymd){
   const table={
-    "0107":"人日",
+    "0107":"🌿人日",
     "0303":"🎎雛祭",
     "0505":"🎏端午",
     "0707":"🎋七夕",
