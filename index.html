@@ -162,14 +162,25 @@ function render(showMemo){
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
 
-    let description = "";
+let description = "";
 
-    const descMatch = b.match(/DESCRIPTION[^:]*:(.*?)(?=[A-Z]+:|$)/);
-    if(descMatch){
-      description = descMatch[1]
-        .replace(/\\n/g,"\n")
-        .trim();
-    }
+const descIndex = b.indexOf("DESCRIPTION");
+if(descIndex !== -1){
+  const afterDesc = b.slice(descIndex);
+  const nextProp = afterDesc.search(/\b[A-Z]+:/);
+  
+  if(nextProp > 0){
+    description = afterDesc
+      .slice(afterDesc.indexOf(":")+1, nextProp)
+      .replace(/\\n/g,"\n")
+      .trim();
+  } else {
+    description = afterDesc
+      .slice(afterDesc.indexOf(":")+1)
+      .replace(/\\n/g,"\n")
+      .trim();
+  }
+}
 
     if(!start) return;
 
