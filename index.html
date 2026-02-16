@@ -142,9 +142,6 @@ loadBtn.onclick=()=>render(false);
 memoBtn.onclick=()=>render(true);
 
 function render(showMemo){
-
-  console.log(b);
-
   const sDate=startInput.value.replace(/-/g,"");
   const eDate=endInput.value.replace(/-/g,"");
   const sTime=(startTimeInput.value||"00:00").replace(":","");
@@ -164,25 +161,11 @@ function render(showMemo){
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
 
-let description = "";
-
-const descIndex = b.indexOf("DESCRIPTION");
-if(descIndex !== -1){
-  const afterDesc = b.slice(descIndex);
-  const nextProp = afterDesc.search(/\b[A-Z]+:/);
-  
-  if(nextProp > 0){
-    description = afterDesc
-      .slice(afterDesc.indexOf(":")+1, nextProp)
-      .replace(/\\n/g,"\n")
-      .trim();
-  } else {
-    description = afterDesc
-      .slice(afterDesc.indexOf(":")+1)
-      .replace(/\\n/g,"\n")
-      .trim();
-  }
-}
+    let description = "";
+    const descMatch = b.match(/DESCRIPTION:(.*?)(?:\r?\n[A-Z]+:|$)/s);
+    if(descMatch){
+      description = descMatch[1].replace(/\\n/g,"\n").trim();
+    }
 
     if(!start) return;
 
@@ -199,26 +182,22 @@ if(descIndex !== -1){
     }
 
     const eventKey=ymd8+hhmm;
-
-    if(!showMemo){
-      if(eventKey<startKey||eventKey>endKey) return;
-    }
-
+    if(!showMemo && (eventKey<startKey || eventKey>endKey)) return;
     if(key && !title.toLowerCase().includes(key)) return;
 
-    const displayTime=hhmm==="0000"?"":`${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
-    const displayEnd=endhhmm?`-${endhhmm.slice(0,2)}:${endhhmm.slice(2)}`:"";
+    const displayTime = hhmm==="0000"?"":`${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
+    const displayEnd  = endhhmm?`-${endhhmm.slice(0,2)}:${endhhmm.slice(2)}`:"";
 
     lines.push({
       key:eventKey,
-      text:isMemo
+      text: isMemo
         ? `${displayTime}${title}`
         : description
             ? `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}\n${description}`
             : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
     });
 
-  }); // ← forEach 正常終了
+  });
 
   lines.sort((a,b)=>a.key.localeCompare(b.key));
 
@@ -237,12 +216,8 @@ copyBtn.onclick = async () => {
     .filter(b => b.trim() !== "");
 
   const copyText = blocks.map(block => {
-
     const lines = block.split("\n");
-
-    // 1行目: YYYY-MM-DD HH:MM-HH:MM タイトル
     const m = lines[0].match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) (.+)/);
-
     if (m) {
       const [, , start, end, title] = m;
       const description = lines.slice(1).join("\n");
@@ -250,8 +225,7 @@ copyBtn.onclick = async () => {
         ? `${start}${title}${end}\n${description}`
         : `${start}${title}${end}`;
     }
-
-    return block; // メモなど
+    return block;
   }).join("\n\n");
 
   await navigator.clipboard.writeText(copyText);
