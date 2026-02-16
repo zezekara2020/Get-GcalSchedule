@@ -200,6 +200,8 @@ function render(showMemo){
           : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
   });
 
+});
+
   lines.sort((a,b)=>a.key.localeCompare(b.key));
 
   output.textContent=lines.length
