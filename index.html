@@ -137,6 +137,8 @@ allBtn.onclick=()=>{
   endInput.value=fmt(maxDate);
 };
 
+console.log(cachedICS.split("BEGIN:VEVENT")[1]);
+
 /* ---------- 表示 ---------- */
 loadBtn.onclick=()=>render(false);
 memoBtn.onclick=()=>render(true);
