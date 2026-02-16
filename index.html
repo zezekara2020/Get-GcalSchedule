@@ -143,6 +143,8 @@ memoBtn.onclick=()=>render(true);
 
 function render(showMemo){
 
+  console.log(b);
+
   const sDate=startInput.value.replace(/-/g,"");
   const eDate=endInput.value.replace(/-/g,"");
   const sTime=(startTimeInput.value||"00:00").replace(":","");
