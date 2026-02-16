@@ -159,6 +159,8 @@ function render(showMemo){
     const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
+    const descriptionRaw=get(/DESCRIPTION:(.+)/);
+    const description=descriptionRaw.replace(/\\n/g,"\n");
 
     if(!start) return;
 
@@ -185,18 +187,23 @@ function render(showMemo){
     const displayTime=hhmm==="0000"?"":`${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
     const displayEnd=endhhmm?`-${endhhmm.slice(0,2)}:${endhhmm.slice(2)}`:"";
 
-    lines.push({
-      key:eventKey,
-      text:isMemo
-        ? `${displayTime}${title}`
-        : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
-    });
+  lines.push({
+    key:eventKey,
+    start:hhmm,
+    end:endhhmm,
+    title:title,
+    description:description,
+    text:isMemo
+      ? `${displayTime}${title}`
+      : description
+          ? `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}\n${description}`
+          : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
   });
 
   lines.sort((a,b)=>a.key.localeCompare(b.key));
 
   output.textContent=lines.length
-    ? lines.map(l=>l.text).join("\n")
+    ? lines.map(l=>l.text).join("\n\n")
     : (showMemo?"メモはありません":"予定はありません");
 
   copyBtn.disabled=lines.length===0;
@@ -204,21 +211,29 @@ function render(showMemo){
 
 /* ---------- コピー ---------- */
 copyBtn.onclick = async () => {
-  // 現在表示されている行を取得
-  const lines = output.textContent.split("\n").filter(l => l.trim() !== "");
 
-  // 各行から開始時刻・タイトル・終了時刻を抽出
-  const copyText = lines.map(line => {
-    // 形式: "YYYY-MM-DD HH:MM-HH:MM タイトル"
-    const m = line.match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) (.+)/);
+  const blocks = output.textContent
+    .split("\n\n")
+    .filter(b => b.trim() !== "");
+
+  const copyText = blocks.map(block => {
+
+    const lines = block.split("\n");
+
+    // 1行目: YYYY-MM-DD HH:MM-HH:MM タイトル
+    const m = lines[0].match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) (.+)/);
+
     if (m) {
-      const [, date, start, end, title] = m;
-      return `${start}${title}${end}`; // タブ区切りで複数列
+      const [, , start, end, title] = m;
+      const description = lines.slice(1).join("\n");
+      return description
+        ? `${start}${title}${end}\n${description}`
+        : `${start}${title}${end}`;
     }
-    return line; // メモ行などはそのまま
-  }).join("\n");
 
-  // クリップボードにコピー
+    return block; // メモなど
+  }).join("\n\n");
+
   await navigator.clipboard.writeText(copyText);
   alert("予定をコピーしました");
 };
