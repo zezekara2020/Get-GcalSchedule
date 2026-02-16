@@ -161,7 +161,8 @@ function render(showMemo){
     const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
-    const descriptionRaw=get(/DESCRIPTION:(.+)/);
+    const descriptionRaw = (b.match(/DESCRIPTION:(.*?)(?:\n[A-Z]|$)/s) || [])[1] || "";
+
     const description=descriptionRaw.replace(/\\n/g,"\n");
 
     if(!start) return;
