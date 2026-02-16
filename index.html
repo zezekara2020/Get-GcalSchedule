@@ -155,7 +155,9 @@ function render(showMemo){
   const lines=[];
 
   cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
+
     const get=r=>(b.match(r)||[])[1]||"";
+
     const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
     const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
     const title=get(/SUMMARY:(.+)/);
@@ -187,20 +189,16 @@ function render(showMemo){
     const displayTime=hhmm==="0000"?"":`${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
     const displayEnd=endhhmm?`-${endhhmm.slice(0,2)}:${endhhmm.slice(2)}`:"";
 
-  lines.push({
-    key:eventKey,
-    start:hhmm,
-    end:endhhmm,
-    title:title,
-    description:description,
-    text:isMemo
-      ? `${displayTime}${title}`
-      : description
-          ? `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}\n${description}`
-          : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
-  });
+    lines.push({
+      key:eventKey,
+      text:isMemo
+        ? `${displayTime}${title}`
+        : description
+            ? `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}\n${description}`
+            : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
+    });
 
-});
+  }); // ← forEach 正常終了
 
   lines.sort((a,b)=>a.key.localeCompare(b.key));
 
