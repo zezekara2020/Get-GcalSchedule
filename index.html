@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>予定一覧（JSON版対応）</title>
+<title>予定一覧（JSON本番版）</title>
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding:16px;}
 .range { font-size:13px;color:#555;margin-bottom:8px;}
@@ -21,7 +21,6 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <div class="controls">
 <label>開始日：<input type="date" id="startDate" disabled></label>
 <label>開始時刻：<input type="time" id="startTime" value="00:00" disabled></label>
-
 <label>終了日：<input type="date" id="endDate" disabled></label>
 <label>終了時刻：<input type="time" id="endTime" value="23:59" disabled></label>
 
@@ -31,6 +30,10 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <button id="weekBtn" disabled>今週</button>
 <button id="monthBtn" disabled>今月</button>
 <button id="allBtn" disabled>全期間</button>
+<button id="memoBtn" disabled>メモ一覧</button>
+<button id="headingBtn" disabled>見出し</button>
+
+<label>検索：<input type="text" id="keyword"></label>
 <button id="loadBtn" disabled>表示</button>
 <button id="copyBtn" disabled>コピー</button>
 </div>
@@ -38,132 +41,221 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <pre id="out">初期化中…</pre>
 
 <script>
-const JSON_URL = "https://あなたのworker.example.com/"; // Cloudflare Worker URL
+const JSON_URL = "/api";
 
 const startInput = document.getElementById("startDate");
 const endInput = document.getElementById("endDate");
 const startTimeInput = document.getElementById("startTime");
-const endTimeInput   = document.getElementById("endTime");
+const endTimeInput = document.getElementById("endTime");
+const keywordInput = document.getElementById("keyword");
 const output = document.getElementById("out");
 
 const todayBtn = document.getElementById("todayBtn");
-const weekBtn  = document.getElementById("weekBtn");
+const weekBtn = document.getElementById("weekBtn");
 const monthBtn = document.getElementById("monthBtn");
-const allBtn   = document.getElementById("allBtn");
-const loadBtn  = document.getElementById("loadBtn");
-const copyBtn  = document.getElementById("copyBtn");
+const allBtn = document.getElementById("allBtn");
+const memoBtn = document.getElementById("memoBtn");
+const loadBtn = document.getElementById("loadBtn");
+const copyBtn = document.getElementById("copyBtn");
+const headingBtn = document.getElementById("headingBtn");
 const rangeInfo = document.getElementById("rangeInfo");
 
-let eventsData = [];
+let minDate = null;
+let maxDate = null;
 
-// ---------- 初期化 ----------
 init();
 
+/* ---------- 初期化 ---------- */
 async function init(){
   try{
-    const res = await fetch(JSON_URL);
+    const res = await fetch(JSON_URL,{
+      headers:{
+        "Authorization":"Basic "+btoa("xxxx:yyyyyyyyyy")
+      }
+    });
+
     if(!res.ok){
-      output.textContent = `データ取得失敗: ${res.status}`;
-      return;
-    }
-    eventsData = await res.json();
-
-    if(!eventsData || eventsData.length===0){
-      output.textContent = "予定はありません";
-      enableUI();
+      output.textContent = "データ取得失敗: " + res.status;
       return;
     }
 
-    const dates = eventsData.map(e=>new Date(e.start));
+    window._allEvents = await res.json();
+
+    if(!Array.isArray(window._allEvents) || window._allEvents.length===0){
+      output.textContent = "予定がありません";
+      return;
+    }
+
+    const dates = window._allEvents.map(e=>new Date(e.start));
     const min = new Date(Math.min(...dates));
     const max = new Date(Math.max(...dates));
 
-    startInput.value = min.toISOString().slice(0,10);
-    endInput.value   = max.toISOString().slice(0,10);
+    minDate = ymd(min);
+    maxDate = ymd(max);
 
-    rangeInfo.textContent = `予定期間：${startInput.value} ～ ${endInput.value}`;
-    output.textContent = "条件を指定してください";
+    startInput.value = fmt(minDate);
+    endInput.value   = fmt(maxDate);
+
+    rangeInfo.textContent = `予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
 
     enableUI();
-  } catch(err){
+    output.textContent="条件を指定してください";
+
+  }catch(err){
     console.error(err);
-    output.textContent = "データ取得中にエラーが発生しました";
+    output.textContent="データ取得中にエラーが発生しました";
   }
 }
 
-// ---------- UI有効化 ----------
-function enableUI(){
-  [startInput, endInput, startTimeInput, endTimeInput,
-   todayBtn, weekBtn, monthBtn, allBtn, loadBtn, copyBtn].forEach(e=>e.disabled=false);
-}
+/* ---------- 日付補正 ---------- */
+startInput.onchange = ()=>{
+  endInput.min = startInput.value;
+  if(endInput.value < startInput.value)
+    endInput.value = startInput.value;
+};
 
-// ---------- 日付補正 ----------
-startInput.onchange = ()=>{ if(endInput.value < startInput.value) endInput.value = startInput.value; };
-
-// ---------- 今日・今週・今月・全期間 ----------
+/* ---------- ボタン ---------- */
 todayBtn.onclick = ()=>{
-  const d = new Date(); startInput.value = endInput.value = d.toISOString().slice(0,10);
+  const t = clamp(ymd(new Date()));
+  startInput.value = fmt(t);
+  endInput.value   = fmt(t);
 };
+
 weekBtn.onclick = ()=>{
-  const d = new Date(); const w = d.getDay(); 
-  const start = new Date(d); start.setDate(d.getDate()-(w===0?6:w-1));
-  const end   = new Date(start); end.setDate(start.getDate()+6);
-  startInput.value = start.toISOString().slice(0,10);
-  endInput.value   = end.toISOString().slice(0,10);
+  const d=new Date();
+  const w=d.getDay();
+  d.setDate(d.getDate()-(w===0?6:w-1));
+  startInput.value=fmt(clamp(ymd(d)));
+  d.setDate(d.getDate()+6);
+  endInput.value=fmt(clamp(ymd(d)));
 };
+
 monthBtn.onclick = ()=>{
-  const d = new Date();
-  const start = new Date(d.getFullYear(), d.getMonth(),1);
-  const end   = new Date(d.getFullYear(), d.getMonth()+1,0);
-  startInput.value = start.toISOString().slice(0,10);
-  endInput.value   = end.toISOString().slice(0,10);
+  const d=new Date();
+  const first=new Date(d.getFullYear(),d.getMonth(),1);
+  const last=new Date(d.getFullYear(),d.getMonth()+1,0);
+  startInput.value=fmt(clamp(ymd(first)));
+  endInput.value=fmt(clamp(ymd(last)));
 };
+
 allBtn.onclick = ()=>{
-  const dates = eventsData.map(e=>new Date(e.start));
-  const min = new Date(Math.min(...dates));
-  const max = new Date(Math.max(...dates));
-  startInput.value = min.toISOString().slice(0,10);
-  endInput.value   = max.toISOString().slice(0,10);
+  startInput.value=fmt(minDate);
+  endInput.value=fmt(maxDate);
 };
 
-// ---------- 表示 ----------
-loadBtn.onclick = render;
+loadBtn.onclick = ()=>render(false);
+memoBtn.onclick = ()=>render(true);
 
-function render(){
-  const sDate = new Date(startInput.value+"T"+startTimeInput.value);
-  const eDate = new Date(endInput.value+"T"+endTimeInput.value);
+/* ---------- 表示 ---------- */
+function render(showMemo){
 
-  const lines = eventsData.filter(e=>{
-    const start = new Date(e.start);
-    return start>=sDate && start<=eDate;
-  }).map(e=>{
-    const start = new Date(e.start);
-    const end   = new Date(e.end);
-    const startH = start.toTimeString().slice(0,5);
-    const endH   = end.toTimeString().slice(0,5);
-    const desc = (e.description && e.description!=="This is an event reminder") ? e.description : "";
-    return {
-      display: `${start.toISOString().slice(0,10)} ${startH}-${endH} ${e.title}${desc?`\n${desc}`:""}`,
-      copy: `${startH}${e.title}${endH}${desc?`\n${desc}`:""}`
-    };
+  const startDT = new Date(startInput.value+"T"+startTimeInput.value);
+  const endDT   = new Date(endInput.value+"T"+endTimeInput.value);
+
+  const key = keywordInput.value.toLowerCase();
+  const events=[];
+
+  window._allEvents.forEach(ev=>{
+
+    const s=new Date(ev.start);
+    const e=new Date(ev.end);
+
+    if(!showMemo){
+      if(s<startDT || s>endDT) return;
+    }
+
+    if(key && !ev.title.toLowerCase().includes(key)) return;
+
+    const dateStr = fmt(ymd(s));
+    let startStr="",endStr="";
+
+    if(!ev.allDay){
+      startStr=pad2(s.getHours())+":"+pad2(s.getMinutes());
+      endStr=pad2(e.getHours())+":"+pad2(e.getMinutes());
+    }
+
+    const desc=(ev.description==="This is an event reminder")?"":(ev.description||"");
+
+    events.push({
+      sort:s.getTime(),
+      date:dateStr,
+      start:startStr,
+      end:endStr,
+      title:ev.title||"",
+      description:desc
+    });
   });
 
-  output.textContent = lines.length ? lines.map(l=>l.display).join("\n\n") : "予定はありません";
-  output._copyData = lines.map(l=>l.copy);
-  copyBtn.disabled = lines.length===0;
+  events.sort((a,b)=>a.sort-b.sort);
+  window._lastRendered=events;
+
+  const displayLines = events.map(ev=>{
+    const header = ev.start
+      ? `${ev.date} ${ev.start}-${ev.end} ${ev.title}`
+      : `${ev.date} ${ev.title}`;
+
+    return ev.description
+      ? `${header}\n${ev.description}`
+      : header;
+  });
+
+  output.textContent = displayLines.length
+    ? displayLines.join("\n\n")
+    : (showMemo?"メモはありません":"予定はありません");
+
+  copyBtn.disabled = events.length===0;
 }
 
-// ---------- コピー ----------
+/* ---------- コピー ---------- */
 copyBtn.onclick = async ()=>{
-  if(!output._copyData) return;
-  try{
-    await navigator.clipboard.writeText(output._copyData.join("\n"));
-    alert("予定をコピーしました");
-  } catch(err){
-    console.error(err);
-    alert("コピー失敗");
-  }
+
+  if(!window._lastRendered) return;
+
+  const lines=[];
+
+  window._lastRendered.forEach(ev=>{
+    if(!ev.start) return;
+
+    const firstLine = `${ev.start}${ev.title}${ev.end}`;
+
+    if(ev.description){
+      lines.push(firstLine);
+      lines.push(ev.description);
+    }else{
+      lines.push(firstLine);
+    }
+  });
+
+  if(lines.length===0) return;
+
+  await navigator.clipboard.writeText(lines.join("\n"));
+  alert("予定をコピーしました");
 };
+
+/* ---------- 見出し ---------- */
+headingBtn.onclick=()=>{
+  const ymd8=startInput.value.replace(/-/g,"");
+  const d=new Date(startInput.value);
+  const week=["日","月","火","水","木","金","土"][d.getDay()];
+  output.textContent=`${fmt(ymd8)}(${week})`;
+  copyBtn.disabled=true;
+};
+
+/* ---------- UI ---------- */
+function enableUI(){
+  [
+    startInput,endInput,startTimeInput,endTimeInput,
+    todayBtn,weekBtn,monthBtn,allBtn,
+    memoBtn,loadBtn,headingBtn,copyBtn
+  ].forEach(e=>e.disabled=false);
+}
+
+/* ---------- util ---------- */
+function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
+function ymd(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
+function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
+function pad2(n){return n.toString().padStart(2,'0');}
 </script>
+
 </body>
 </html>
