@@ -210,12 +210,27 @@ allBtn.onclick=()=>{
   endInput.value=formatDate(maxDateObj);
 };
 
-headingBtn.onclick=()=>{
-  const d=new Date(startInput.value);
-  const week=["日","月","火","水","木","金","土"][d.getDay()];
-  output.textContent=
-    startInput.value.replace(/-/g,"")+"("+week+")";
-  copyBtn.disabled=true;
+headingBtn.onclick = () => {
+
+  const dateStr = startInput.value; // YYYY-MM-DD
+  if (!dateStr) return;
+
+  const d = new Date(dateStr);
+  const ymd8 = dateStr.replace(/-/g,"");
+  const week = ["日","月","火","水","木","金","土"][d.getDay()];
+
+  const holiday = getHolidayFromJSON(d);
+  const sekki = getSekki(d);
+  const sekku = getSekku(ymd8);
+
+  let line = `${dateStr}(${week})`;
+
+  if (holiday) line += ` 🎌${holiday}`;
+  if (sekki) line += ` ${sekki}`;
+  if (sekku) line += ` ${sekku}`;
+
+  output.textContent = line;
+  copyBtn.disabled = true;
 };
 
 /* ---------- コピー ---------- */
@@ -236,6 +251,81 @@ copyBtn.onclick=async()=>{
   await navigator.clipboard.writeText(lines.join("\n"));
   alert("コピーしました");
 };
+
+function getHolidayFromJSON(dateObj){
+
+  const target = formatDate(dateObj);
+
+  const found = window._allEvents.find(ev => {
+    if (!ev.allDay) return false;
+
+    const d = new Date(ev.start);
+    return formatDate(d) === target;
+  });
+
+  return found ? found.title : "";
+}
+
+function getSekku(ymd){
+  const table = {
+    "0107":"🌿人日",
+    "0303":"🎎雛祭",
+    "0505":"🎏端午",
+    "0707":"🎋七夕",
+    "0909":"🍶重陽"
+  };
+  return table[ymd.slice(4,8)] || "";
+}
+
+function getSekki(date){
+
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+
+  const table = [
+    {name:"☀️小寒",month:1,base:6.3811},
+    {name:"☀️大寒",month:1,base:20.8431},
+    {name:"☀️立春",month:2,base:4.8693},
+    {name:"☀️雨水",month:2,base:19.7062},
+    {name:"☀️啓蟄",month:3,base:5.63},
+    {name:"☀️春分",month:3,type:"spring"},
+    {name:"☀️清明",month:4,base:4.81},
+    {name:"☀️穀雨",month:4,base:20.1},
+    {name:"☀️立夏",month:5,base:5.52},
+    {name:"☀️小満",month:5,base:21.04},
+    {name:"☀️芒種",month:6,base:5.678},
+    {name:"☀️夏至",month:6,base:21.37},
+    {name:"☀️小暑",month:7,base:7.108},
+    {name:"☀️大暑",month:7,base:22.83},
+    {name:"☀️立秋",month:8,base:7.5},
+    {name:"☀️処暑",month:8,base:23.13},
+    {name:"☀️白露",month:9,base:7.646},
+    {name:"☀️秋分",month:9,type:"autumn"},
+    {name:"☀️寒露",month:10,base:8.318},
+    {name:"☀️霜降",month:10,base:23.438},
+    {name:"☀️立冬",month:11,base:7.438},
+    {name:"☀️小雪",month:11,base:22.36},
+    {name:"☀️大雪",month:12,base:7.18},
+    {name:"☀️冬至",month:12,base:21.94}
+  ];
+
+  for(const s of table){
+    if(s.month !== m) continue;
+
+    let day;
+    if(s.type === "spring")
+      day = Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+    else if(s.type === "autumn")
+      day = Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+    else
+      day = Math.floor(s.base + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+
+    if(day === d) return s.name;
+  }
+
+  return "";
+}
 
 /* ---------- util ---------- */
 function enableUI(){
