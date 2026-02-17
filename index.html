@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>予定一覧（JSON本番版）</title>
+<title>予定一覧（完全版）</title>
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding:16px;}
 .range { font-size:13px;color:#555;margin-bottom:8px;}
@@ -60,8 +60,8 @@ const copyBtn=document.getElementById("copyBtn");
 const headingBtn=document.getElementById("headingBtn");
 const rangeInfo=document.getElementById("rangeInfo");
 
-let minDate=null;
-let maxDate=null;
+let minDateObj=null;
+let maxDateObj=null;
 
 init();
 
@@ -75,154 +75,166 @@ async function init(){
     });
 
     if(!res.ok){
-      output.textContent="データ取得失敗:"+res.status;
+      output.textContent="取得失敗:"+res.status;
       return;
     }
 
     window._allEvents=await res.json();
 
-    if(!Array.isArray(window._allEvents)){
-      output.textContent="データ形式エラー";
-      return;
-    }
-
-    // ★ メモ除外して範囲計算
-    const normalEvents=window._allEvents.filter(e=>{
-      const d=new Date(e.start);
-      return !(d.getFullYear()===9999 && d.getMonth()===11 && d.getDate()===31);
+    const normal=window._allEvents.filter(ev=>{
+      const d=new Date(ev.start);
+      return !isMemoDate(d);
     });
 
-    if(normalEvents.length===0){
+    if(normal.length===0){
       output.textContent="予定がありません";
       return;
     }
 
-    const dates=normalEvents.map(e=>new Date(e.start));
-    const min=new Date(Math.min(...dates));
-    const max=new Date(Math.max(...dates));
+    const dates=normal.map(e=>new Date(e.start));
+    minDateObj=new Date(Math.min(...dates));
+    maxDateObj=new Date(Math.max(...dates));
 
-    minDate=ymd(min);
-    maxDate=ymd(max);
+    startInput.value=formatDate(minDateObj);
+    endInput.value=formatDate(maxDateObj);
 
-    startInput.value=fmt(minDate);
-    endInput.value=fmt(maxDate);
-
-    rangeInfo.textContent=`予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
+    rangeInfo.textContent=
+      `予定期間：${formatDate(minDateObj)} ～ ${formatDate(maxDateObj)}`;
 
     enableUI();
     output.textContent="条件を指定してください";
 
-  }catch(err){
-    console.error(err);
-    output.textContent="データ取得中にエラーが発生しました";
+  }catch(e){
+    console.error(e);
+    output.textContent="データ取得エラー";
   }
+}
+
+/* ---------- メモ判定 ---------- */
+function isMemoDate(d){
+  return d.getFullYear()===9999 &&
+         d.getMonth()===11 &&
+         d.getDate()===31 &&
+         d.getHours()===23 &&
+         d.getMinutes()===59;
 }
 
 /* ---------- 表示 ---------- */
 function render(showMemo){
 
-  const startDT = new Date(startInput.value + "T" + startTimeInput.value);
-  const endDT   = new Date(endInput.value   + "T" + endTimeInput.value);
+  const startDT=new Date(startInput.value+"T"+startTimeInput.value);
+  const endDT=new Date(endInput.value+"T"+endTimeInput.value);
 
-  const key = keywordInput.value.toLowerCase();
-  const events = [];
+  const key=keywordInput.value.toLowerCase();
+  const result=[];
 
   window._allEvents.forEach(ev=>{
 
-    const s = new Date(ev.start);
-    const e = new Date(ev.end);
+    const s=new Date(ev.start);
+    const e=new Date(ev.end);
+    const memo=isMemoDate(s);
 
-    const isMemo =
-      s.getFullYear() === 9999 &&
-      s.getMonth() === 11 &&
-      s.getDate() === 31 &&
-      s.getHours() === 23 &&
-      s.getMinutes() === 59;
-
-    /* -----------------------------
-       ▼ メモ一覧モード
-    ----------------------------- */
     if(showMemo){
-
-      if(!isMemo) return;   // ★ メモだけ出す
-
+      if(!memo) return;
     }else{
-
-      if(isMemo) return;    // ★ 通常表示ではメモ除外
-
-      if(s < startDT || s > endDT) return;
+      if(memo) return;
+      if(s<startDT||s>endDT) return;
     }
 
     if(key && !ev.title.toLowerCase().includes(key)) return;
 
-    const desc =
-      ev.description === "This is an event reminder"
-        ? ""
-        : (ev.description || "");
+    const desc=ev.description==="This is an event reminder"?"":(ev.description||"");
 
-    events.push({
-      sort: showMemo ? 0 : s.getTime(),
-      isMemo,
-      date: fmt(ymd(s)),
-      start: pad2(s.getHours()) + ":" + pad2(s.getMinutes()),
-      end: pad2(e.getHours()) + ":" + pad2(e.getMinutes()),
-      title: ev.title || "",
-      description: desc
+    result.push({
+      sort: memo?0:s.getTime(),
+      memo,
+      date:formatDate(s),
+      start:pad2(s.getHours())+":"+pad2(s.getMinutes()),
+      end:pad2(e.getHours())+":"+pad2(e.getMinutes()),
+      title:ev.title||"",
+      description:desc
     });
-
   });
 
-  events.sort((a,b)=>a.sort-b.sort);
-  window._lastRendered = events;
+  result.sort((a,b)=>a.sort-b.sort);
+  window._lastRendered=result;
 
-  const lines = events.map(ev=>{
-
+  const lines=result.map(ev=>{
     if(showMemo){
-      // ★ 日付・時刻を出さない
       return ev.description
         ? `${ev.title}\n${ev.description}`
         : ev.title;
     }
-
-    const header = `${ev.date} ${ev.start}-${ev.end} ${ev.title}`;
-
-    return ev.description
-      ? `${header}\n${ev.description}`
-      : header;
+    const head=`${ev.date} ${ev.start}-${ev.end} ${ev.title}`;
+    return ev.description?`${head}\n${ev.description}`:head;
   });
 
-  output.textContent = lines.length
+  output.textContent=lines.length
     ? lines.join("\n\n")
-    : (showMemo ? "メモはありません" : "予定はありません");
+    : (showMemo?"メモはありません":"予定はありません");
 
-  copyBtn.disabled = events.length===0;
+  copyBtn.disabled=result.length===0;
 }
 
 /* ---------- ボタン ---------- */
 loadBtn.onclick=()=>render(false);
 memoBtn.onclick=()=>render(true);
 
+todayBtn.onclick=()=>{
+  const t=new Date();
+  startInput.value=formatDate(t);
+  endInput.value=formatDate(t);
+};
+
+weekBtn.onclick=()=>{
+  const d=new Date();
+  const day=d.getDay();
+  const monday=new Date(d);
+  monday.setDate(d.getDate()-(day===0?6:day-1));
+  const sunday=new Date(monday);
+  sunday.setDate(monday.getDate()+6);
+  startInput.value=formatDate(monday);
+  endInput.value=formatDate(sunday);
+};
+
+monthBtn.onclick=()=>{
+  const d=new Date();
+  const first=new Date(d.getFullYear(),d.getMonth(),1);
+  const last=new Date(d.getFullYear(),d.getMonth()+1,0);
+  startInput.value=formatDate(first);
+  endInput.value=formatDate(last);
+};
+
+allBtn.onclick=()=>{
+  startInput.value=formatDate(minDateObj);
+  endInput.value=formatDate(maxDateObj);
+};
+
+headingBtn.onclick=()=>{
+  const d=new Date(startInput.value);
+  const week=["日","月","火","水","木","金","土"][d.getDay()];
+  output.textContent=
+    startInput.value.replace(/-/g,"")+"("+week+")";
+  copyBtn.disabled=true;
+};
+
 /* ---------- コピー ---------- */
 copyBtn.onclick=async()=>{
   if(!window._lastRendered) return;
 
   const lines=[];
-
   window._lastRendered.forEach(ev=>{
-
-    if(ev.isMemo){
+    if(ev.memo){
       lines.push(ev.title);
       if(ev.description) lines.push(ev.description);
-      return;
+    }else{
+      lines.push(`${ev.start}${ev.title}${ev.end}`);
+      if(ev.description) lines.push(ev.description);
     }
-
-    const first=`${ev.start}${ev.title}${ev.end}`;
-    lines.push(first);
-    if(ev.description) lines.push(ev.description);
   });
 
   await navigator.clipboard.writeText(lines.join("\n"));
-  alert("予定をコピーしました");
+  alert("コピーしました");
 };
 
 /* ---------- util ---------- */
@@ -233,10 +245,14 @@ function enableUI(){
     memoBtn,loadBtn,headingBtn,copyBtn
   ].forEach(e=>e.disabled=false);
 }
-function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
-function ymd(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
+
+function formatDate(d){
+  return d.getFullYear()+"-"+
+    pad2(d.getMonth()+1)+"-"+
+    pad2(d.getDate());
+}
+
 function pad2(n){return n.toString().padStart(2,'0');}
 </script>
-
 </body>
 </html>
