@@ -234,10 +234,12 @@ headingBtn.onclick = () => {
 };
 
 /* ---------- コピー ---------- */
-copyBtn.onclick=async()=>{
+copyBtn.onclick = () => {
+
   if(!window._lastRendered) return;
 
-  const lines=[];
+  const lines = [];
+
   window._lastRendered.forEach(ev=>{
     if(ev.memo){
       lines.push(ev.title);
@@ -248,9 +250,42 @@ copyBtn.onclick=async()=>{
     }
   });
 
-  await navigator.clipboard.writeText(lines.join("\n"));
-  alert("コピーしました");
+  const text = lines.join("\n");
+
+  copyToClipboard(text);
 };
+
+function copyToClipboard(text){
+
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(text)
+      .then(()=>alert("コピーしました"))
+      .catch(()=>fallbackCopy(text));
+  }else{
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text){
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+
+  textarea.focus();
+  textarea.select();
+
+  try{
+    document.execCommand("copy");
+    alert("コピーしました");
+  }catch(e){
+    alert("コピーに失敗しました");
+  }
+
+  document.body.removeChild(textarea);
+}
 
 function getHolidayFromJSON(dateObj){
 
