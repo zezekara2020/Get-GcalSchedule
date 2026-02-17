@@ -69,8 +69,32 @@ init();
 
 /* ---------- 初期化 ---------- */
 async function init(){
-  const res = await fetch(ICS_URL);
+
+  const res = await fetch(ICS_URL, {
+    headers: {
+      "Authorization": "Basic " + btoa("tao:haltoto")
+    }
+  });
+
+  if(!res.ok){
+    output.textContent = "データ取得失敗: " + res.status;
+    return;
+  }
+
   window._allEvents = await res.json();
+
+  if(window._allEvents.length === 0){
+    output.textContent = "予定がありません";
+    return;
+  }
+
+  // ★ 最小・最大日付を自動設定
+  const dates = window._allEvents.map(e => new Date(e.start));
+  const min = new Date(Math.min(...dates));
+  const max = new Date(Math.max(...dates));
+
+  startInput.value = min.toISOString().slice(0,10);
+  endInput.value   = max.toISOString().slice(0,10);
 
   enableUI();
   output.textContent = "条件を指定してください";
