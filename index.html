@@ -225,6 +225,13 @@ function parseICSDate(s){
   return new Date(y,m,d,h,min,sec);
 }
 
+function enableUI(){
+  [
+    startInput,endInput,startTimeInput,endTimeInput,
+    todayBtn,weekBtn,monthBtn,allBtn,
+    memoBtn,loadBtn,headingBtn,copyBtn
+  ].forEach(e=>e.disabled=false);
+}
 
 /* ---------- util ---------- */
 function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
