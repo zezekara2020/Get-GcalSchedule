@@ -283,13 +283,50 @@ function getSekki(date){
   const m = date.getMonth() + 1;
   const d = date.getDate();
 
+  /* --- 2026年補正テーブル（正確値） --- */
+  const fixed2026 = {
+    "0105":"☀️小寒",
+    "0120":"☀️大寒",
+    "0204":"☀️立春",
+    "0219":"☀️雨水",
+    "0305":"☀️啓蟄",
+    "0320":"☀️春分",
+    "0405":"☀️清明",
+    "0420":"☀️穀雨",
+    "0505":"☀️立夏",
+    "0521":"☀️小満",
+    "0606":"☀️芒種",
+    "0621":"☀️夏至",
+    "0707":"☀️小暑",
+    "0723":"☀️大暑",
+    "0807":"☀️立秋",
+    "0823":"☀️処暑",
+    "0907":"☀️白露",
+    "0923":"☀️秋分",
+    "1008":"☀️寒露",
+    "1023":"☀️霜降",
+    "1107":"☀️立冬",
+    "1122":"☀️小雪",
+    "1207":"☀️大雪",
+    "1222":"☀️冬至"
+  };
+
+  if(y === 2026){
+    const key =
+      m.toString().padStart(2,'0') +
+      d.toString().padStart(2,'0');
+    return fixed2026[key] || "";
+  }
+
+  /* --- それ以外は従来式（参考値） --- */
+
   const table = [
-    {name:"☀️小寒",month:1,base:6.3811},
-    {name:"☀️大寒",month:1,base:20.8431},
-    {name:"☀️立春",month:2,base:4.8693},
-    {name:"☀️雨水",month:2,base:19.7062},
+    {name:"☀️小寒",month:1,base:5.4055},
+    {name:"☀️大寒",month:1,base:20.12},
+    {name:"☀️立春",month:2,base:4.87},
+    {name:"☀️雨水",month:2,base:19.73},
     {name:"☀️啓蟄",month:3,base:5.63},
-    {name:"☀️春分",month:3,type:"spring"},
+    {name:"☀️春分",month:3,base:20.646},
     {name:"☀️清明",month:4,base:4.81},
     {name:"☀️穀雨",month:4,base:20.1},
     {name:"☀️立夏",month:5,base:5.52},
@@ -301,7 +338,7 @@ function getSekki(date){
     {name:"☀️立秋",month:8,base:7.5},
     {name:"☀️処暑",month:8,base:23.13},
     {name:"☀️白露",month:9,base:7.646},
-    {name:"☀️秋分",month:9,type:"autumn"},
+    {name:"☀️秋分",month:9,base:23.2488},
     {name:"☀️寒露",month:10,base:8.318},
     {name:"☀️霜降",month:10,base:23.438},
     {name:"☀️立冬",month:11,base:7.438},
@@ -313,19 +350,16 @@ function getSekki(date){
   for(const s of table){
     if(s.month !== m) continue;
 
-    let day;
-    if(s.type === "spring")
-      day = Math.floor(20.8431 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
-    else if(s.type === "autumn")
-      day = Math.floor(23.2488 + 0.242194*(y-1980) - Math.floor((y-1980)/4));
-    else
-      day = Math.floor(s.base + 0.242194*(y-1980) - Math.floor((y-1980)/4));
+    const day = Math.floor(
+      s.base + 0.242194*(y-1980) - Math.floor((y-1980)/4)
+    );
 
     if(day === d) return s.name;
   }
 
   return "";
 }
+
 
 /* ---------- util ---------- */
 function enableUI(){
