@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>予定一覧</title>
+<title>予定一覧（本番用）</title>
 <style>
 body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding:16px;}
 .range { font-size:13px;color:#555;margin-bottom:8px;}
@@ -21,7 +21,6 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <div class="controls">
 <label>開始日：<input type="date" id="startDate" disabled></label>
 <label>開始時刻：<input type="time" id="startTime" value="00:00" disabled></label>
-
 <label>終了日：<input type="date" id="endDate" disabled></label>
 <label>終了時刻：<input type="time" id="endTime" value="23:59" disabled></label>
 
@@ -42,293 +41,248 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <pre id="out">初期化中…</pre>
 
 <script>
-const WORKER_URL = "/api";
+const ICS_URL = "/api";
 
-const startInput=document.getElementById("startDate");
-const endInput=document.getElementById("endDate");
-const startTimeInput=document.getElementById("startTime");
-const endTimeInput=document.getElementById("endTime");
-const keywordInput=document.getElementById("keyword");
-const output=document.getElementById("out");
+const startInput = document.getElementById("startDate");
+const endInput = document.getElementById("endDate");
+const startTimeInput = document.getElementById("startTime");
+const endTimeInput = document.getElementById("endTime");
+const keywordInput = document.getElementById("keyword");
+const output = document.getElementById("out");
 
-const todayBtn=document.getElementById("todayBtn");
-const weekBtn=document.getElementById("weekBtn");
-const monthBtn=document.getElementById("monthBtn");
-const allBtn=document.getElementById("allBtn");
-const memoBtn=document.getElementById("memoBtn");
-const loadBtn=document.getElementById("loadBtn");
-const copyBtn=document.getElementById("copyBtn");
-const headingBtn=document.getElementById("headingBtn");
-const rangeInfo=document.getElementById("rangeInfo");
+const todayBtn = document.getElementById("todayBtn");
+const weekBtn = document.getElementById("weekBtn");
+const monthBtn = document.getElementById("monthBtn");
+const allBtn = document.getElementById("allBtn");
+const memoBtn = document.getElementById("memoBtn");
+const loadBtn = document.getElementById("loadBtn");
+const copyBtn = document.getElementById("copyBtn");
+const headingBtn = document.getElementById("headingBtn");
+const rangeInfo = document.getElementById("rangeInfo");
 
-let cachedICS="";
-let minDate=null;
-let maxDate=null;
+let cachedICS = "";
+let minDate = null;
+let maxDate = null;
 
 init();
 
 /* ---------- 初期化 ---------- */
-async function init(){
-  const res=await fetch(WORKER_URL);
-  cachedICS=(await res.text()).replace(/\r?\n[ \t]/g,"");
+async function init() {
+  try {
+    const res = await fetch(ICS_URL);
+    cachedICS = (await res.text()).replace(/\r?\n[ \t]/g,"");
 
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
-    const m=b.match(/DTSTART[^:]*:(\d{8})/);
-    if(!m) return;
-    const ymd=m[1];
-    if(ymd==="99991231") return;
+    cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b => {
+      const m = b.match(/DTSTART[^:]*:(\d{8})/);
+      if(!m) return;
+      const ymd = m[1];
+      if(ymd === "99991231") return;
+      if(!minDate || ymd < minDate) minDate = ymd;
+      if(!maxDate || ymd > maxDate) maxDate = ymd;
+    });
 
-    if(!minDate||ymd<minDate) minDate=ymd;
-    if(!maxDate||ymd>maxDate) maxDate=ymd;
-  });
+    rangeInfo.textContent = `予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
 
-  rangeInfo.textContent=`予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
+    startInput.min = endInput.min = fmt(minDate);
+    startInput.max = endInput.max = fmt(maxDate);
+    startInput.value = fmt(minDate);
+    endInput.value = fmt(maxDate);
 
-  startInput.min=endInput.min=fmt(minDate);
-  startInput.max=endInput.max=fmt(maxDate);
-  startInput.value=fmt(minDate);
-  endInput.value=fmt(maxDate);
+    [
+      startInput, endInput, startTimeInput, endTimeInput,
+      todayBtn, weekBtn, monthBtn, allBtn,
+      memoBtn, loadBtn, headingBtn
+    ].forEach(e => e.disabled = false);
 
-  [
-    startInput,endInput,startTimeInput,endTimeInput,
-    todayBtn,weekBtn,monthBtn,allBtn,
-    memoBtn,loadBtn,headingBtn
-  ].forEach(e=>e.disabled=false);
-
-  output.textContent="条件を指定してください";
+    output.textContent = "条件を指定してください";
+  } catch(err) {
+    output.textContent = "ICSの読み込みに失敗しました: " + err;
+  }
 }
 
 /* ---------- 日付補正 ---------- */
-startInput.onchange=()=>{
-  endInput.min=startInput.value;
-  if(endInput.value<startInput.value)
-    endInput.value=startInput.value;
+startInput.onchange = () => {
+  endInput.min = startInput.value;
+  if(endInput.value < startInput.value) endInput.value = startInput.value;
 };
 
-/* ---------- 今日 ---------- */
-todayBtn.onclick=()=>{
-  const t=clamp(ymd(new Date()));
-  startInput.value=fmt(t);
-  endInput.value=fmt(t);
-};
+/* ---------- ボタン各種 ---------- */
+todayBtn.onclick = () => { const t = clamp(ymd(new Date())); startInput.value = fmt(t); endInput.value = fmt(t); };
+weekBtn.onclick = () => { const d=new Date(); const w=d.getDay(); d.setDate(d.getDate()-(w===0?6:w-1)); startInput.value=fmt(clamp(ymd(d))); d.setDate(d.getDate()+6); endInput.value=fmt(clamp(ymd(d))); };
+monthBtn.onclick = () => { const d=new Date(); const first=new Date(d.getFullYear(),d.getMonth(),1); const last=new Date(d.getFullYear(),d.getMonth()+1,0); startInput.value=fmt(clamp(ymd(first))); endInput.value=fmt(clamp(ymd(last))); };
+allBtn.onclick = () => { startInput.value = fmt(minDate); endInput.value = fmt(maxDate); };
+loadBtn.onclick = () => render(false);
+memoBtn.onclick = () => render(true);
 
-/* ---------- 今週 ---------- */
-weekBtn.onclick=()=>{
-  const d=new Date();
-  const w=d.getDay();
-  d.setDate(d.getDate()-(w===0?6:w-1));
-  startInput.value=fmt(clamp(ymd(d)));
-  d.setDate(d.getDate()+6);
-  endInput.value=fmt(clamp(ymd(d)));
-};
-
-/* ---------- 今月 ---------- */
-monthBtn.onclick=()=>{
-  const d=new Date();
-  const first=new Date(d.getFullYear(),d.getMonth(),1);
-  const last=new Date(d.getFullYear(),d.getMonth()+1,0);
-  startInput.value=fmt(clamp(ymd(first)));
-  endInput.value=fmt(clamp(ymd(last)));
-};
-
-/* ---------- 全期間 ---------- */
-allBtn.onclick=()=>{
-  startInput.value=fmt(minDate);
-  endInput.value=fmt(maxDate);
-};
-
-console.log(cachedICS.split("BEGIN:VEVENT")[1]);
-
-/* ---------- 表示 ---------- */
-loadBtn.onclick=()=>render(false);
-memoBtn.onclick=()=>render(true);
-
+/* ---------- 表示レンダリング ---------- */
 function render(showMemo){
-  const sDate=startInput.value.replace(/-/g,"");
-  const eDate=endInput.value.replace(/-/g,"");
-  const sTime=(startTimeInput.value||"00:00").replace(":","");
-  const eTime=(endTimeInput.value||"23:59").replace(":","");
 
-  const startKey=sDate+sTime;
-  const endKey=eDate+eTime;
+  const startDateTime = new Date(startInput.value + "T" + startTimeInput.value);
+  const endDateTime   = new Date(endInput.value   + "T" + endTimeInput.value);
 
-  const key=keywordInput.value.toLowerCase();
-  const lines=[];
+  const key = keywordInput.value.toLowerCase();
+  const events = [];
 
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
+  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(block => {
 
-    const get=r=>(b.match(r)||[])[1]||"";
+    const get = r => (block.match(r)||[])[1]||"";
 
-    const start=get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?)/);
-    const end=get(/DTEND[^:]*:(\d{8}(?:T\d{6})?)/);
-    const title=get(/SUMMARY:(.+)/);
+    const rawStart = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?Z?)/);
+    const rawEnd   = get(/DTEND[^:]*:(\d{8}(?:T\d{6})?Z?)/);
+    const title    = get(/SUMMARY:(.+)/);
 
-    let description = "";
-    const descMatch = b.match(/DESCRIPTION:(.*?)(?:\r?\n[A-Z]+:|$)/s);
-    if(descMatch){
-      description = descMatch[1].replace(/\\n/g,"\n").trim();
+    if(!rawStart) return;
+
+    const isMemo = rawStart.startsWith("99991231");
+    if(showMemo !== isMemo) return;
+
+    const startDate = parseICSDate(rawStart);
+    const endDate   = rawEnd ? parseICSDate(rawEnd) : null;
+
+    if(!showMemo){
+      if(startDate < startDateTime || startDate > endDateTime) return;
     }
 
-    if(!start) return;
-
-    const ymd8=start.slice(0,8);
-    const isMemo=(ymd8==="99991231");
-    if(showMemo!==isMemo) return;
-
-    let hhmm="0000";
-    let endhhmm="";
-
-    if(start.includes("T")){
-      hhmm=start.slice(9,13);
-      if(end) endhhmm=end.slice(9,13);
-    }
-
-    const eventKey=ymd8+hhmm;
-    if(!showMemo && (eventKey<startKey || eventKey>endKey)) return;
     if(key && !title.toLowerCase().includes(key)) return;
 
-    const displayTime = hhmm==="0000"?"":`${hhmm.slice(0,2)}:${hhmm.slice(2)}`;
-    const displayEnd  = endhhmm?`-${endhhmm.slice(0,2)}:${endhhmm.slice(2)}`:"";
+    /* ===== DESCRIPTION取得（安全） ===== */
+    let description = "";
+    const linesArr = block.split("\n");
 
-    lines.push({
-      key:eventKey,
-      text: isMemo
-        ? `${displayTime}${title}`
-        : description
-            ? `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}\n${description}`
-            : `${fmt(ymd8)} ${displayTime}${displayEnd} ${title}`
+    for(const line of linesArr){
+      if(line.startsWith("DESCRIPTION:")){
+        description = line.replace("DESCRIPTION:","").trim();
+        break;
+      }
+    }
+
+    if(description === "This is an event reminder"){
+      description = "";
+    }
+
+    /* ===== 表示用データ作成 ===== */
+
+    const dateStr =
+      startDate.getFullYear() + "-" +
+      pad2(startDate.getMonth()+1) + "-" +
+      pad2(startDate.getDate());
+
+    let startStr = "";
+    let endStr   = "";
+
+    if(rawStart.includes("T")){
+      startStr = pad2(startDate.getHours()) + ":" + pad2(startDate.getMinutes());
+      if(endDate){
+        endStr = pad2(endDate.getHours()) + ":" + pad2(endDate.getMinutes());
+      }
+    }
+
+    events.push({
+      sortKey: startDate.getTime(),
+      date: dateStr,
+      start: startStr,
+      end: endStr,
+      title: title,
+      description: description
     });
 
   });
 
-  lines.sort((a,b)=>a.key.localeCompare(b.key));
+  events.sort((a,b)=>a.sortKey-b.sortKey);
 
-  output.textContent=lines.length
-    ? lines.map(l=>l.text).join("\n\n")
-    : (showMemo?"メモはありません":"予定はありません");
+  /* ===== 表示用テキスト生成 ===== */
 
-  copyBtn.disabled=lines.length===0;
+  const displayLines = events.map(e => {
+
+    let header;
+
+    if(e.start){
+      header = `${e.date} ${e.start}-${e.end} ${e.title}`;
+    } else {
+      header = `${e.date} ${e.title}`;
+    }
+
+    return e.description
+      ? `${header}\n${e.description}`
+      : header;
+  });
+
+  output.textContent = displayLines.length
+    ? displayLines.join("\n")
+    : (showMemo ? "メモはありません" : "予定はありません");
+
+  copyBtn.disabled = events.length===0;
+
+  window._lastRendered = events;   // ★ 構造データ保存
 }
+
 
 /* ---------- コピー ---------- */
 copyBtn.onclick = async () => {
 
-  const blocks = output.textContent
-    .split("\n\n")
-    .filter(b => b.trim() !== "");
+  if(!window._lastRendered) return;
 
-  const copyText = blocks.map(block => {
-    const lines = block.split("\n");
-    const m = lines[0].match(/(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})-(\d{2}:\d{2}) (.+)/);
-    if (m) {
-      const [, , start, end, title] = m;
-      const description = lines.slice(1).join("\n");
-      return description
-        ? `${start}${title}${end}\n${description}`
-        : `${start}${title}${end}`;
+  const copyLines = [];
+
+  window._lastRendered.forEach(e => {
+
+    if(!e.start) return; // 終日やメモは除外する場合
+
+    const firstLine = `${e.start}${e.title}${e.end}`;
+
+    if(e.description){
+      copyLines.push(firstLine + "\n" + e.description);
+    } else {
+      copyLines.push(firstLine);
     }
-    return block;
-  }).join("\n\n");
+
+  });
+
+  const copyText = copyLines.join("\n");
 
   await navigator.clipboard.writeText(copyText);
+
   alert("予定をコピーしました");
 };
 
 /* ---------- 見出し ---------- */
-headingBtn.onclick=()=>{
-  const ymd8=startInput.value.replace(/-/g,"");
-  const d=new Date(startInput.value);
-  const week=["日","月","火","水","木","金","土"][d.getDay()];
-
-  const holiday=getHoliday(ymd8);
-  const sekki=getSekki(d);
-  const sekku=getSekku(ymd8);
-
-  let line=`${fmt(ymd8)}(${week})`;
-  if(holiday) line+=` 🎌${holiday}`;
-  if(sekki) line+=` ${sekki}`;
-  if(sekku) line+=` ${sekku}`;
-
-  output.textContent=line;
-  copyBtn.disabled=true;
+headingBtn.onclick = () => {
+  const ymd8 = startInput.value.replace(/-/g,"");
+  const d = new Date(startInput.value);
+  const week = ["日","月","火","水","木","金","土"][d.getDay()];
+  output.textContent = `${fmt(ymd8)}(${week})`;
+  copyBtn.disabled = true;
 };
 
-/* ---------- 祝日取得 ---------- */
-function getHoliday(targetYmd){
-  let name="";
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b=>{
-    const start=(b.match(/DTSTART;VALUE=DATE:(\d{8})/)||[])[1];
-    const title=(b.match(/SUMMARY:(.+)/)||[])[1];
-    if(start===targetYmd) name=title;
-  });
-  return name;
-}
+/* ---------- ICS日付パース ---------- */
+function parseICSDate(s){
 
-/* ---------- 五節句 ---------- */
-function getSekku(ymd){
-  const table={
-    "0107":"🌿人日",
-    "0303":"🎎雛祭",
-    "0505":"🎏端午",
-    "0707":"🎋七夕",
-    "0909":"🍶重陽"
-  };
-  return table[ymd.slice(4,8)]||"";
-}
+  const y = parseInt(s.slice(0,4));
+  const m = parseInt(s.slice(4,6))-1;
+  const d = parseInt(s.slice(6,8));
 
-/* ---------- 二十四節気 ---------- */
-function getSekki(date){
-  const y=date.getFullYear();
-  const m=date.getMonth()+1;
-  const d=date.getDate();
+  let h=0,min=0,sec=0;
 
-  const table=[
-    {name:"☀️小寒",month:1,base:6.3811},
-    {name:"☀️大寒",month:1,base:20.8431},
-    {name:"☀️立春",month:2,base:4.8693},
-    {name:"☀️雨水",month:2,base:19.7062},
-    {name:"☀️啓蟄",month:3,base:5.63},
-    {name:"☀️春分",month:3,type:"spring"},
-    {name:"☀️清明",month:4,base:4.81},
-    {name:"☀️穀雨",month:4,base:20.1},
-    {name:"☀️立夏",month:5,base:5.52},
-    {name:"☀️小満",month:5,base:21.04},
-    {name:"☀️芒種",month:6,base:5.678},
-    {name:"☀️夏至",month:6,base:21.37},
-    {name:"☀️小暑",month:7,base:7.108},
-    {name:"☀️大暑",month:7,base:22.83},
-    {name:"☀️立秋",month:8,base:7.5},
-    {name:"☀️処暑",month:8,base:23.13},
-    {name:"☀️白露",month:9,base:7.646},
-    {name:"☀️秋分",month:9,type:"autumn"},
-    {name:"☀️寒露",month:10,base:8.318},
-    {name:"☀️霜降",month:10,base:23.438},
-    {name:"☀️立冬",month:11,base:7.438},
-    {name:"☀️小雪",month:11,base:22.36},
-    {name:"☀️大雪",month:12,base:7.18},
-    {name:"☀️冬至",month:12,base:21.94}
-  ];
-
-  for(const s of table){
-    if(s.month!==m) continue;
-    let day;
-    if(s.type==="spring")
-      day=Math.floor(20.8431+0.242194*(y-1980)-Math.floor((y-1980)/4));
-    else if(s.type==="autumn")
-      day=Math.floor(23.2488+0.242194*(y-1980)-Math.floor((y-1980)/4));
-    else
-      day=Math.floor(s.base+0.242194*(y-1980)-Math.floor((y-1980)/4));
-    if(day===d) return s.name;
+  if(s.includes("T")){
+    h=parseInt(s.slice(9,11));
+    min=parseInt(s.slice(11,13));
+    sec=parseInt(s.slice(13,15));
   }
-  return "";
+
+  if(s.endsWith("Z")){
+    return new Date(Date.UTC(y,m,d,h,min,sec));
+  }
+
+  return new Date(y,m,d,h,min,sec);
 }
+
 
 /* ---------- util ---------- */
 function fmt(ymd){return`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}`;}
-function ymd(d){return d.getFullYear().toString().padStart(4,'0')+
- (d.getMonth()+1).toString().padStart(2,'0')+
- d.getDate().toString().padStart(2,'0');}
+function ymd(d){return d.getFullYear().toString().padStart(4,'0')+(d.getMonth()+1).toString().padStart(2,'0')+d.getDate().toString().padStart(2,'0');}
 function clamp(v){return v<minDate?minDate:v>maxDate?maxDate:v;}
+function pad2(n){return n.toString().padStart(2,'0');}
 </script>
+
 </body>
 </html>
