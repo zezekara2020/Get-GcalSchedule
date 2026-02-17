@@ -41,8 +41,8 @@ pre{white-space:pre-wrap;background:#f6f6f6;padding:12px;font-size:14px;}
 <pre id="out">初期化中…</pre>
 
 <script>
-const ICS_URL = "/api";
-// const ICS_URL = "schedule.ics"; // サーバー上の ICS ファイルパス
+// const ICS_URL = "/api";
+const ICS_URL = "schedule.ics"; // サーバー上の ICS ファイルパス
 
 const startInput = document.getElementById("startDate");
 const endInput = document.getElementById("endDate");
@@ -68,37 +68,12 @@ let maxDate = null;
 init();
 
 /* ---------- 初期化 ---------- */
-async function init() {
-  try {
-    const res = await fetch(ICS_URL);
-    cachedICS = (await res.text()).replace(/\r?\n[ \t]/g,"");
+async function init(){
+  const res = await fetch(ICS_URL);
+  window._allEvents = await res.json();
 
-    cachedICS.split("BEGIN:VEVENT").slice(1).forEach(b => {
-      const m = b.match(/DTSTART[^:]*:(\d{8})/);
-      if(!m) return;
-      const ymd = m[1];
-      if(ymd === "99991231") return;
-      if(!minDate || ymd < minDate) minDate = ymd;
-      if(!maxDate || ymd > maxDate) maxDate = ymd;
-    });
-
-    rangeInfo.textContent = `予定期間：${fmt(minDate)} ～ ${fmt(maxDate)}`;
-
-    startInput.min = endInput.min = fmt(minDate);
-    startInput.max = endInput.max = fmt(maxDate);
-    startInput.value = fmt(minDate);
-    endInput.value = fmt(maxDate);
-
-    [
-      startInput, endInput, startTimeInput, endTimeInput,
-      todayBtn, weekBtn, monthBtn, allBtn,
-      memoBtn, loadBtn, headingBtn
-    ].forEach(e => e.disabled = false);
-
-    output.textContent = "条件を指定してください";
-  } catch(err) {
-    output.textContent = "ICSの読み込みに失敗しました: " + err;
-  }
+  enableUI();
+  output.textContent = "条件を指定してください";
 }
 
 /* ---------- 日付補正 ---------- */
@@ -124,44 +99,16 @@ function render(showMemo){
   const key = keywordInput.value.toLowerCase();
   const events = [];
 
-  cachedICS.split("BEGIN:VEVENT").slice(1).forEach(block => {
+  window._allEvents.forEach(ev => {
 
-    const get = r => (block.match(r)||[])[1]||"";
-
-    const rawStart = get(/DTSTART[^:]*:(\d{8}(?:T\d{6})?Z?)/);
-    const rawEnd   = get(/DTEND[^:]*:(\d{8}(?:T\d{6})?Z?)/);
-    const title    = get(/SUMMARY:(.+)/);
-
-    if(!rawStart) return;
-
-    const isMemo = rawStart.startsWith("99991231");
-    if(showMemo !== isMemo) return;
-
-    const startDate = parseICSDate(rawStart);
-    const endDate   = rawEnd ? parseICSDate(rawEnd) : null;
+    const startDate = new Date(ev.start);
+    const endDate   = new Date(ev.end);
 
     if(!showMemo){
       if(startDate < startDateTime || startDate > endDateTime) return;
     }
 
-    if(key && !title.toLowerCase().includes(key)) return;
-
-    /* ===== DESCRIPTION取得（安全） ===== */
-    let description = "";
-    const linesArr = block.split("\n");
-
-    for(const line of linesArr){
-      if(line.startsWith("DESCRIPTION:")){
-        description = line.replace("DESCRIPTION:","").trim();
-        break;
-      }
-    }
-
-    if(description === "This is an event reminder"){
-      description = "";
-    }
-
-    /* ===== 表示用データ作成 ===== */
+    if(key && !ev.title.toLowerCase().includes(key)) return;
 
     const dateStr =
       startDate.getFullYear() + "-" +
@@ -171,27 +118,28 @@ function render(showMemo){
     let startStr = "";
     let endStr   = "";
 
-    if(rawStart.includes("T")){
+    if(!ev.allDay){
       startStr = pad2(startDate.getHours()) + ":" + pad2(startDate.getMinutes());
-      if(endDate){
-        endStr = pad2(endDate.getHours()) + ":" + pad2(endDate.getMinutes());
-      }
+      endStr   = pad2(endDate.getHours()) + ":" + pad2(endDate.getMinutes());
     }
+
+    const description =
+      ev.description === "This is an event reminder"
+        ? ""
+        : ev.description;
 
     events.push({
       sortKey: startDate.getTime(),
       date: dateStr,
       start: startStr,
       end: endStr,
-      title: title,
+      title: ev.title,
       description: description
     });
 
   });
 
   events.sort((a,b)=>a.sortKey-b.sortKey);
-
-  /* ===== 表示用テキスト生成 ===== */
 
   const displayLines = events.map(e => {
 
@@ -209,12 +157,12 @@ function render(showMemo){
   });
 
   output.textContent = displayLines.length
-    ? displayLines.join("\n")
+    ? displayLines.join("\n\n")
     : (showMemo ? "メモはありません" : "予定はありません");
 
   copyBtn.disabled = events.length===0;
 
-  window._lastRendered = events;   // ★ 構造データ保存
+  window._lastRendered = events;
 }
 
 
