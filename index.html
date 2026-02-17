@@ -121,65 +121,81 @@ async function init(){
 /* ---------- 表示 ---------- */
 function render(showMemo){
 
-  const startDT=new Date(startInput.value+"T"+startTimeInput.value);
-  const endDT=new Date(endInput.value+"T"+endTimeInput.value);
+  const startDT = new Date(startInput.value + "T" + startTimeInput.value);
+  const endDT   = new Date(endInput.value   + "T" + endTimeInput.value);
 
-  const key=keywordInput.value.toLowerCase();
-  const events=[];
+  const key = keywordInput.value.toLowerCase();
+  const events = [];
 
   window._allEvents.forEach(ev=>{
 
-    const s=new Date(ev.start);
-    const e=new Date(ev.end);
+    const s = new Date(ev.start);
+    const e = new Date(ev.end);
 
-    const isMemo=(s.getFullYear()===9999 && s.getMonth()===11 && s.getDate()===31);
+    const isMemo =
+      s.getFullYear() === 9999 &&
+      s.getMonth() === 11 &&
+      s.getDate() === 31 &&
+      s.getHours() === 23 &&
+      s.getMinutes() === 59;
 
-    // 通常表示ではメモ除外
-    if(!showMemo && isMemo) return;
+    /* -----------------------------
+       ▼ メモ一覧モード
+    ----------------------------- */
+    if(showMemo){
 
-    if(!showMemo){
-      if(s<startDT||s>endDT) return;
+      if(!isMemo) return;   // ★ メモだけ出す
+
+    }else{
+
+      if(isMemo) return;    // ★ 通常表示ではメモ除外
+
+      if(s < startDT || s > endDT) return;
     }
 
     if(key && !ev.title.toLowerCase().includes(key)) return;
 
-    const desc=(ev.description==="This is an event reminder")?"":(ev.description||"");
+    const desc =
+      ev.description === "This is an event reminder"
+        ? ""
+        : (ev.description || "");
 
     events.push({
-      sort:isMemo?0:s.getTime(),
+      sort: showMemo ? 0 : s.getTime(),
       isMemo,
-      date:fmt(ymd(s)),
-      start:pad2(s.getHours())+":"+pad2(s.getMinutes()),
-      end:pad2(e.getHours())+":"+pad2(e.getMinutes()),
-      title:ev.title||"",
-      description:desc
+      date: fmt(ymd(s)),
+      start: pad2(s.getHours()) + ":" + pad2(s.getMinutes()),
+      end: pad2(e.getHours()) + ":" + pad2(e.getMinutes()),
+      title: ev.title || "",
+      description: desc
     });
 
   });
 
   events.sort((a,b)=>a.sort-b.sort);
-  window._lastRendered=events;
+  window._lastRendered = events;
 
-  const lines=events.map(ev=>{
+  const lines = events.map(ev=>{
 
     if(showMemo){
-      // ★ メモ一覧は日付も時刻も出さない
+      // ★ 日付・時刻を出さない
       return ev.description
         ? `${ev.title}\n${ev.description}`
         : ev.title;
     }
 
-    const header=`${ev.date} ${ev.start}-${ev.end} ${ev.title}`;
+    const header = `${ev.date} ${ev.start}-${ev.end} ${ev.title}`;
+
     return ev.description
       ? `${header}\n${ev.description}`
       : header;
   });
 
-  output.textContent=lines.length
+  output.textContent = lines.length
     ? lines.join("\n\n")
-    : (showMemo?"メモはありません":"予定はありません");
+    : (showMemo ? "メモはありません" : "予定はありません");
 
-  copyBtn.disabled=events.length===0;
+  copyBtn.disabled = events.length===0;
 }
 
 /* ---------- ボタン ---------- */
